@@ -56,6 +56,7 @@ module Text.Pandoc.Writers
     , writeICML
     , writeJATS
     , writeJSON
+    , writeSile
     , writeLaTeX
     , writeMan
     , writeMarkdown
@@ -100,6 +101,7 @@ import Text.Pandoc.Writers.HTML
 import Text.Pandoc.Writers.Haddock
 import Text.Pandoc.Writers.ICML
 import Text.Pandoc.Writers.JATS
+import Text.Pandoc.Writers.Sile
 import Text.Pandoc.Writers.LaTeX
 import Text.Pandoc.Writers.Man
 import Text.Pandoc.Writers.Markdown
@@ -150,6 +152,7 @@ writers = [
   ,("jats"         , TextWriter writeJATS)
   ,("opml"         , TextWriter writeOPML)
   ,("opendocument" , TextWriter writeOpenDocument)
+  ,("sile"         , TextWriter writeSile)
   ,("latex"        , TextWriter writeLaTeX)
   ,("beamer"       , TextWriter writeBeamer)
   ,("context"      , TextWriter writeConTeXt)
