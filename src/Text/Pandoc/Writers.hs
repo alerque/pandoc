@@ -47,6 +47,7 @@ module Text.Pandoc.Writers
     , writeJSON
     , writeJira
     , writeLaTeX
+    , writeSile
     , writeMan
     , writeMarkdown
     , writeMediaWiki
@@ -101,6 +102,7 @@ import Text.Pandoc.Writers.ICML
 import Text.Pandoc.Writers.JATS
 import Text.Pandoc.Writers.Jira
 import Text.Pandoc.Writers.LaTeX
+import Text.Pandoc.Writers.Sile
 import Text.Pandoc.Writers.Man
 import Text.Pandoc.Writers.Markdown
 import Text.Pandoc.Writers.MediaWiki
@@ -156,6 +158,7 @@ writers = [
   ,("jira"         , TextWriter writeJira)
   ,("opml"         , TextWriter writeOPML)
   ,("opendocument" , TextWriter writeOpenDocument)
+  ,("sile"         , TextWriter writeSile)
   ,("latex"        , TextWriter writeLaTeX)
   ,("beamer"       , TextWriter writeBeamer)
   ,("context"      , TextWriter writeConTeXt)
