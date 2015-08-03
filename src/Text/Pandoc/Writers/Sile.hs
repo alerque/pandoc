@@ -47,8 +47,8 @@ import Control.Monad.State
 import qualified Text.Parsec as P
 import Text.Pandoc.Pretty
 import Text.Pandoc.Slides
-import Text.Pandoc.Highlighting (highlight, styleToSile,
-                                 formatSileInline, formatSileBlock,
+import Text.Pandoc.Highlighting (highlight, styleToLaTeX,
+                                 formatLaTeXInline, formatLaTeXBlock,
                                  toListingsLanguage)
 
 data WriterState =
@@ -176,7 +176,7 @@ pandocToSile options (Pandoc meta blocks) = do
                   defField "mainlang" mainlang $
                   defField "otherlang" otherlang $
                   (if stHighlighting st
-                      then defField "highlighting-macros" (styleToSile
+                      then defField "highlighting-macros" (styleToLaTeX
                                 $ writerHighlightStyle options )
                       else id) $
                   (case writerCiteMethod options of
@@ -410,7 +410,7 @@ blockToSile (CodeBlock (identifier,classes,keyvalAttr) str) = do
         return $ flush ("\\begin{lstlisting}" <> printParams $$ text str $$
                  "\\end{lstlisting}") $$ cr
   let highlightedCodeBlock =
-        case highlight formatSileBlock ("",classes,keyvalAttr) str of
+        case highlight formatLaTeXBlock ("",classes,keyvalAttr) str of
                Nothing -> rawCodeBlock
                Just  h -> modify (\st -> st{ stHighlighting = True }) >>
                           return (flush $ linkAnchor $$ text h)
@@ -780,7 +780,7 @@ inlineToSile (Code (_,classes,_) str) = do
                           []    -> '!'
            return $ text $ "\\lstinline" ++ [chr] ++ str ++ [chr]
          highlightCode = do
-           case highlight formatSileInline ("",classes,[]) str of
+           case highlight formatLaTeXInline ("",classes,[]) str of
                   Nothing -> rawCode
                   Just  h -> modify (\st -> st{ stHighlighting = True }) >>
                              return (text h)
