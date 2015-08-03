@@ -46,7 +46,6 @@ import Control.Applicative ((<|>))
 import Control.Monad.State
 import qualified Text.Parsec as P
 import Text.Pandoc.Pretty
-import Text.Pandoc.Slides
 import Text.Pandoc.Highlighting (highlight, styleToLaTeX,
                                  formatLaTeXInline, formatLaTeXBlock,
                                  toListingsLanguage)
@@ -68,7 +67,6 @@ data WriterState =
               , stBook          :: Bool          -- true if document uses book or memoir class
               , stCsquotes      :: Bool          -- true if document uses csquotes
               , stHighlighting  :: Bool          -- true if document has highlighted code
-              , stIncremental   :: Bool          -- true if beamer lists should be displayed bit by bit
               , stInternalLinks :: [String]      -- list of internal link targets
               }
 
@@ -84,7 +82,6 @@ writeSile options document =
                 stUrl = False, stGraphics = False,
                 stLHS = False, stBook = writerChapters options,
                 stCsquotes = False, stHighlighting = False,
-                stIncremental = writerIncremental options,
                 stInternalLinks = [] }
 
 pandocToSile :: WriterOptions -> Pandoc -> State WriterState String
@@ -134,9 +131,7 @@ pandocToSile options (Pandoc meta blocks) = do
                                else case last blocks' of
                                  Header 1 _ il -> (init blocks', il)
                                  _             -> (blocks', [])
-  blocks''' <- if writerBeamer options
-                  then toSlides blocks''
-                  else return blocks''
+  blocks''' <- return blocks''
   body <- mapM (elementToSile options) $ hierarchicalize blocks'''
   (biblioTitle :: String) <- liftM (render colwidth) $ inlineListToSile lastHeader
   let main = render colwidth $ vsep body
@@ -156,11 +151,9 @@ pandocToSile options (Pandoc meta blocks) = do
                   defField "body" main $
                   defField "title-meta" titleMeta $
                   defField "author-meta" (intercalate "; " authorsMeta) $
-                  defField "documentclass" (if writerBeamer options
-                                               then ("beamer" :: String)
-                                               else if stBook st
-                                                    then "book"
-                                                    else "article") $
+                  defField "documentclass" (if stBook st
+                                               then "book"::String
+                                               else "plain"::String) $
                   defField "verbatim-in-note" (stVerbInNote st) $
                   defField "tables" (stTable st) $
                   defField "strikeout" (stStrikeout st) $
@@ -170,7 +163,6 @@ pandocToSile options (Pandoc meta blocks) = do
                   defField "graphics" (stGraphics st) $
                   defField "book-class" (stBook st) $
                   defField "listings" (writerListings options || stLHS st) $
-                  defField "beamer" (writerBeamer options) $
                   defField "mainlang" mainlang $
                   defField "otherlang" otherlang $
                   (if stHighlighting st
@@ -231,50 +223,6 @@ toLabel z = go `fmap` stringToSile URLString z
 inCmd :: String -> Doc -> Doc
 inCmd cmd contents = char '\\' <> text cmd <> braces contents
 
-toSlides :: [Block] -> State WriterState [Block]
-toSlides bs = do
-  opts <- gets stOptions
-  let slideLevel = fromMaybe (getSlideLevel bs) $ writerSlideLevel opts
-  let bs' = prepSlides slideLevel bs
-  concat `fmap` (mapM (elementToBeamer slideLevel) $ hierarchicalize bs')
-
-elementToBeamer :: Int -> Element -> State WriterState [Block]
-elementToBeamer _slideLevel (Blk b) = return [b]
-elementToBeamer slideLevel  (Sec lvl _num (ident,classes,kvs) tit elts)
-  | lvl >  slideLevel = do
-      bs <- concat `fmap` mapM (elementToBeamer slideLevel) elts
-      return $ Para ( RawInline "latex" "\\begin{block}{"
-                    : tit ++ [RawInline "latex" "}"] )
-             : bs ++ [RawBlock "latex" "\\end{block}"]
-  | lvl <  slideLevel = do
-      bs <- concat `fmap` mapM (elementToBeamer slideLevel) elts
-      return $ (Header lvl (ident,classes,kvs) tit) : bs
-  | otherwise = do -- lvl == slideLevel
-      -- note: [fragile] is required or verbatim breaks
-      let hasCodeBlock (CodeBlock _ _) = [True]
-          hasCodeBlock _               = []
-      let hasCode (Code _ _) = [True]
-          hasCode _          = []
-      opts <- gets stOptions
-      let fragile = "fragile" `elem` classes ||
-                    not (null $ query hasCodeBlock elts ++
-                                     if writerListings opts
-                                        then query hasCode elts
-                                        else [])
-      let allowframebreaks = "allowframebreaks" `elem` classes
-      let optionslist = ["fragile" | fragile] ++
-                        ["allowframebreaks" | allowframebreaks]
-      let options = if null optionslist
-                       then ""
-                       else "[" ++ intercalate "," optionslist ++ "]"
-      let slideStart = Para $ RawInline "latex" ("\\begin{frame}" ++ options) :
-                if tit == [Str "\0"]  -- marker for hrule
-                   then []
-                   else (RawInline "latex" "{") : tit ++ [RawInline "latex" "}"]
-      let slideEnd = RawBlock "latex" "\\end{frame}"
-      -- now carve up slide into blocks if there are sections inside
-      bs <- concat `fmap` mapM (elementToBeamer slideLevel) elts
-      return $ slideStart : bs ++ [slideEnd]
 
 isListBlock :: Block -> Bool
 isListBlock (BulletList _)     = True
@@ -292,16 +240,13 @@ blockToSile :: Block     -- ^ Block to convert
              -> State WriterState Doc
 blockToSile Null = return empty
 blockToSile (Div (identifier,classes,_) bs) = do
-  beamer <- writerBeamer `fmap` gets stOptions
   ref <- toLabel identifier
   let linkAnchor = if null identifier
                       then empty
                       else "\\hyperdef{}" <> braces (text ref) <>
                            braces ("\\label" <> braces (text ref))
   contents <- blockListToSile bs
-  if beamer && "notes" `elem` classes  -- speaker notes
-     then return $ "\\note" <> braces contents
-     else return (linkAnchor $$ contents)
+  return (linkAnchor $$ contents)
 blockToSile (Plain lst) =
   inlineListToSile $ dropWhile isLineBreakOrSpace lst
 -- title beginning with fig: indicates that the image is a figure
@@ -309,34 +254,18 @@ blockToSile (Para [Image txt (src,'f':'i':'g':':':tit)]) = do
   inNote <- gets stInNote
   capt <- inlineListToSile txt
   img <- inlineToSile (Image txt (src,tit))
-  return $ if inNote
-              -- can't have figures in notes
-              then "\\begin{center}" $$ img $+$ capt $$ "\\end{center}"
-              else "\\begin{figure}[htbp]" $$ "\\centering" $$ img $$
+  return $ "\\begin{figure}[htbp]" $$ "\\centering" $$ img $$
                       ("\\caption" <> braces capt) $$ "\\end{figure}"
--- . . . indicates pause in beamer slides
 blockToSile (Para [Str ".",Space,Str ".",Space,Str "."]) = do
-  beamer <- writerBeamer `fmap` gets stOptions
-  if beamer
-     then blockToSile (RawBlock "latex" "\\pause")
-     else inlineListToSile [Str ".",Space,Str ".",Space,Str "."]
+  inlineListToSile [Str ".",Space,Str ".",Space,Str "."]
 blockToSile (Para lst) =
   inlineListToSile $ dropWhile isLineBreakOrSpace lst
 blockToSile (BlockQuote lst) = do
-  beamer <- writerBeamer `fmap` gets stOptions
-  case lst of
-       [b] | beamer && isListBlock b -> do
-         oldIncremental <- gets stIncremental
-         modify $ \s -> s{ stIncremental = not oldIncremental }
-         result <- blockToSile b
-         modify $ \s -> s{ stIncremental = oldIncremental }
-         return result
-       _ -> do
-         oldInQuote <- gets stInQuote
-         modify (\s -> s{stInQuote = True})
-         contents <- blockListToSile lst
-         modify (\s -> s{stInQuote = oldInQuote})
-         return $ "\\begin{quote}" $$ contents $$ "\\end{quote}"
+  oldInQuote <- gets stInQuote
+  modify (\s -> s{stInQuote = True})
+  contents <- blockListToSile lst
+  modify (\s -> s{stInQuote = oldInQuote})
+  return $ "\\begin{quote}" $$ contents $$ "\\end{quote}"
 blockToSile (CodeBlock (identifier,classes,keyvalAttr) str) = do
   opts <- gets stOptions
   ref <- toLabel identifier
@@ -396,18 +325,15 @@ blockToSile (RawBlock f x)
   | otherwise           = return empty
 blockToSile (BulletList []) = return empty  -- otherwise latex error
 blockToSile (BulletList lst) = do
-  incremental <- gets stIncremental
-  let inc = if incremental then "[<+->]" else ""
   items <- mapM listItemToSile lst
   let spacing = if isTightList lst
                    then text "\\tightlist"
                    else empty
-  return $ text ("\\begin{itemize}" ++ inc) $$ spacing $$ vcat items $$
+  return $ text ("\\begin{itemize}") $$ spacing $$ vcat items $$
              "\\end{itemize}"
 blockToSile (OrderedList _ []) = return empty -- otherwise latex error
 blockToSile (OrderedList (start, numstyle, numdelim) lst) = do
   st <- get
-  let inc = if stIncremental st then "[<+->]" else ""
   let oldlevel = stOLLevel st
   put $ st {stOLLevel = oldlevel + 1}
   items <- mapM listItemToSile lst
@@ -437,7 +363,7 @@ blockToSile (OrderedList (start, numstyle, numdelim) lst) = do
   let spacing = if isTightList lst
                    then text "\\tightlist"
                    else empty
-  return $ text ("\\begin{enumerate}" ++ inc)
+  return $ text ("\\begin{enumerate}")
          $$ stylecommand
          $$ resetcounter
          $$ spacing
@@ -445,13 +371,11 @@ blockToSile (OrderedList (start, numstyle, numdelim) lst) = do
          $$ "\\end{enumerate}"
 blockToSile (DefinitionList []) = return empty
 blockToSile (DefinitionList lst) = do
-  incremental <- gets stIncremental
-  let inc = if incremental then "[<+->]" else ""
   items <- mapM defListItemToSile lst
   let spacing = if all isTightList (map snd lst)
                    then text "\\tightlist"
                    else empty
-  return $ text ("\\begin{description}" ++ inc) $$ spacing $$ vcat items $$
+  return $ text ("\\begin{description}") $$ spacing $$ vcat items $$
                "\\end{description}"
 blockToSile HorizontalRule = return $
   "\\begin{center}\\rule{0.5\\linewidth}{\\linethickness}\\end{center}"
@@ -637,10 +561,9 @@ sectionHeader unnumbered ref level lst = do
   let headerWith x y = refLabel $ text x <> y <>
                              if null ref
                                 then empty
-                                else text "\\label" <> braces lab
+                                else text "%\\font" <> braces lab
   let sectionType = case level' of
-                          0  | writerBeamer opts -> "part"
-                             | otherwise -> "chapter"
+                          0  -> "chapter"
                           1  -> "section"
                           2  -> "subsection"
                           3  -> "subsubsection"
@@ -827,16 +750,12 @@ inlineToSile (Note contents) = do
                    _                   -> empty
   let noteContents = nest 2 contents' <> optnl
   opts <- gets stOptions
-  -- in beamer slides, display footnote from current overlay forward
-  let beamerMark = if writerBeamer opts
-                      then text "<.->"
-                      else empty
   modify $ \st -> st{ stNotes = noteContents : stNotes st }
   return $
     if inMinipage
        then "\\footnotemark{}"
        -- note: a \n before } needed when note ends with a Verbatim environment
-       else "\\footnote" <> beamerMark <> braces noteContents
+       else "\\footnote" <> braces noteContents
 
 protectCode :: [Inline] -> [Inline]
 protectCode [] = []
