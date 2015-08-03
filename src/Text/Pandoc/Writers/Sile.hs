@@ -421,7 +421,7 @@ blockToSile (CodeBlock (identifier,classes,keyvalAttr) str) = do
        | writerHighlight opts && not (null classes)     -> highlightedCodeBlock
        | otherwise                                      -> rawCodeBlock
 blockToSile (RawBlock f x)
-  | f == Format "latex" || f == Format "tex"
+  | f == Format "sile" || f == Format "sil"
                         = return $ text x
   | otherwise           = return empty
 blockToSile (BulletList []) = return empty  -- otherwise latex error
