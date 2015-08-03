@@ -23,7 +23,7 @@ description:     Pandoc is a Haskell library for converting from one markup
                  Emacs Org-Mode, Emacs Muse, txt2tags, ipynb (Jupyter
                  notebooks), Vimwiki, Word Docx, ODT, EPUB, FictionBook2,
                  roff man, and Textile, and it can write Markdown,
-                 reStructuredText, XHTML, HTML 5, LaTeX, ConTeXt, DocBook,
+                 reStructuredText, XHTML, HTML 5, LaTeX, ConTeXt, Sile, DocBook,
                  JATS, OPML, TEI, OpenDocument, ODT, Word docx,
                  PowerPoint pptx, RTF, MediaWiki, DokuWiki, ZimWiki, Textile,
                  roff man, roff ms, plain text, Emacs Org-Mode,
@@ -489,6 +489,7 @@ library
                    Text.Pandoc.Writers.HTML,
                    Text.Pandoc.Writers.Ipynb,
                    Text.Pandoc.Writers.ICML,
+                   Text.Pandoc.Writers.Sile,
                    Text.Pandoc.Writers.LaTeX,
                    Text.Pandoc.Writers.ConTeXt,
                    Text.Pandoc.Writers.OpenDocument,
@@ -725,6 +726,7 @@ test-suite test-pandoc
                   Tests.Writers.Org
                   Tests.Writers.Plain
                   Tests.Writers.AsciiDoc
+                  Tests.Writers.Sile
                   Tests.Writers.LaTeX
                   Tests.Writers.Docx
                   Tests.Writers.RST
