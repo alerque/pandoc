@@ -70,7 +70,6 @@ data WriterState =
               , stHighlighting  :: Bool          -- true if document has highlighted code
               , stIncremental   :: Bool          -- true if beamer lists should be displayed bit by bit
               , stInternalLinks :: [String]      -- list of internal link targets
-              , stUsesEuro      :: Bool          -- true if euro symbol used
               }
 
 -- | Convert Pandoc to Sile.
@@ -86,7 +85,7 @@ writeSile options document =
                 stLHS = False, stBook = writerChapters options,
                 stCsquotes = False, stHighlighting = False,
                 stIncremental = writerIncremental options,
-                stInternalLinks = [], stUsesEuro = False }
+                stInternalLinks = [] }
 
 pandocToSile :: WriterOptions -> Pandoc -> State WriterState String
 pandocToSile options (Pandoc meta blocks) = do
@@ -170,7 +169,6 @@ pandocToSile options (Pandoc meta blocks) = do
                   defField "lhs" (stLHS st) $
                   defField "graphics" (stGraphics st) $
                   defField "book-class" (stBook st) $
-                  defField "euro" (stUsesEuro st) $
                   defField "listings" (writerListings options || stLHS st) $
                   defField "beamer" (writerBeamer options) $
                   defField "mainlang" mainlang $
@@ -211,42 +209,14 @@ stringToSile  _     []     = return ""
 stringToSile  ctx (x:xs) = do
   opts <- gets stOptions
   rest <- stringToSile ctx xs
-  let ligatures = writerTeXLigatures opts && ctx == TextString
   let isUrl = ctx == URLString
-  when (x == '€') $
-     modify $ \st -> st{ stUsesEuro = True }
   return $
     case x of
-       '€' -> "\\euro{}" ++ rest
        '{' -> "\\{" ++ rest
        '}' -> "\\}" ++ rest
-       '$' | not isUrl -> "\\$" ++ rest
        '%' -> "\\%" ++ rest
-       '&' -> "\\&" ++ rest
-       '_' | not isUrl -> "\\_" ++ rest
-       '#' -> "\\#" ++ rest
-       '-' | not isUrl -> case xs of
-                   -- prevent adjacent hyphens from forming ligatures
-                   ('-':_) -> "-\\/" ++ rest
-                   _       -> '-' : rest
-       '~' | not isUrl -> "\\textasciitilde{}" ++ rest
-       '^' -> "\\^{}" ++ rest
        '\\'| isUrl     -> '/' : rest  -- NB. / works as path sep even on Windows
-           | otherwise -> "\\textbackslash{}" ++ rest
-       '|' -> "\\textbar{}" ++ rest
-       '<' -> "\\textless{}" ++ rest
-       '>' -> "\\textgreater{}" ++ rest
-       '[' -> "{[}" ++ rest  -- to avoid interpretation as
-       ']' -> "{]}" ++ rest  -- optional arguments
-       '\'' | ctx == CodeString -> "\\textquotesingle{}" ++ rest
-       '\160' -> "~" ++ rest
-       '\x2026' -> "\\ldots{}" ++ rest
-       '\x2018' | ligatures -> "`" ++ rest
-       '\x2019' | ligatures -> "'" ++ rest
-       '\x201C' | ligatures -> "``" ++ rest
-       '\x201D' | ligatures -> "''" ++ rest
-       '\x2014' | ligatures -> "---" ++ rest
-       '\x2013' | ligatures -> "--" ++ rest
+           | otherwise -> "\\\\" ++ rest
        _        -> x : rest
 
 toLabel :: String -> State WriterState String
@@ -803,14 +773,8 @@ inlineToSile (Quoted qt lst) = do
                    else empty
        let inner = s1 <> contents <> s2
        return $ case qt of
-                DoubleQuote ->
-                   if writerTeXLigatures opts
-                      then text "``" <> inner <> text "''"
-                      else char '\x201C' <> inner <> char '\x201D'
-                SingleQuote ->
-                   if writerTeXLigatures opts
-                      then char '`' <> inner <> char '\''
-                      else char '\x2018' <> inner <> char '\x2019'
+                DoubleQuote -> char '\x201C' <> inner <> char '\x201D'
+                SingleQuote -> char '\x2018' <> inner <> char '\x2019'
 inlineToSile (Str str) = liftM text $ stringToSile TextString str
 inlineToSile (Math InlineMath str) =
   return $ "\\(" <> text str <> "\\)"
