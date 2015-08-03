@@ -780,6 +780,7 @@ defaultWriterName "-" = "html" -- no output file
 defaultWriterName x =
   case takeExtension (map toLower x) of
     ""          -> "markdown" -- empty extension
+    ".sil"      -> "sile"
     ".tex"      -> "latex"
     ".latex"    -> "latex"
     ".ltx"      -> "latex"
