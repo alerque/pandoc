@@ -46,6 +46,7 @@ data-files:
                  data/templates/default.opendocument
                  data/templates/default.icml
                  data/templates/default.opml
+                 data/templates/default.sile
                  data/templates/default.latex
                  data/templates/default.context
                  data/templates/default.texinfo
