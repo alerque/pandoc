@@ -644,7 +644,7 @@ inlineToRST (Math t str) = do
                    else blankline $$ (".. math:: " <> literal str) $$ blankline
 inlineToRST il@(RawInline f x)
   | f == "rst" = return $ literal x
-  | f == "latex" || f == "tex" = do
+  | f == "latex" || f == "tex" || f == "sile" || f == "sil" = do
       modify $ \st -> st{ stHasRawTeX = True }
       return $ ":raw-latex:`" <> literal x <> "`"
   | otherwise  = empty <$ report (InlineNotRendered il)

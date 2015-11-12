@@ -501,6 +501,12 @@ blockToMarkdown' opts b@(RawBlock f str) = do
                     literal str <> literal "\n"
                 | isEnabled Ext_raw_attribute opts -> rawAttribBlock
                 | otherwise -> renderEmpty
+      | f `elem` ["sile", "sil"] ->
+            case () of
+              _ | isEnabled Ext_raw_sile opts -> return $
+                    text str <> text "\n"
+                | isEnabled Ext_raw_attribute opts -> rawAttribBlock
+                | otherwise -> renderEmpty
       | otherwise -> renderEmpty
 blockToMarkdown' opts HorizontalRule =
   return $ blankline <> literal (T.replicate (writerColumns opts) "-") <> blankline
@@ -1238,6 +1244,11 @@ inlineToMarkdown opts il@(RawInline f str) = do
       | f `elem` ["latex", "tex"] ->
             case () of
               _ | isEnabled Ext_raw_tex opts -> return $ literal str
+                | isEnabled Ext_raw_attribute opts -> rawAttribInline
+                | otherwise -> renderEmpty
+      | f `elem` ["sile", "sil"] ->
+            case () of
+              _ | isEnabled Ext_raw_sile opts -> return $ text str
                 | isEnabled Ext_raw_attribute opts -> rawAttribInline
                 | otherwise -> renderEmpty
       | otherwise -> renderEmpty
