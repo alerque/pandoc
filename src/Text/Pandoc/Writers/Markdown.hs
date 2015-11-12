@@ -455,7 +455,7 @@ blockToMarkdown' opts b@(RawBlock f str)
                 else if isEnabled Ext_markdown_attribute opts
                         then text (addMarkdownAttribute str) <> text "\n"
                         else text str <> text "\n"
-  | f `elem` ["latex", "tex"] && isEnabled Ext_raw_tex opts = do
+  | f `elem` ["latex", "tex", "sile", "sil"] && isEnabled Ext_raw_tex opts = do
     plain <- asks envPlain
     return $ if plain
                 then empty
@@ -1082,7 +1082,7 @@ inlineToMarkdown opts il@(RawInline f str) = do
   if (plain && f == "plain") || (not plain &&
      ( f `elem` ["markdown", "markdown_github", "markdown_phpextra",
                  "markdown_mmd", "markdown_strict"] ||
-       (isEnabled Ext_raw_tex opts && (f == "latex" || f == "tex")) ||
+       (isEnabled Ext_raw_tex opts && (f == "latex" || f == "tex" || f == "sile" || f == "sil" )) ||
        (isEnabled Ext_raw_html opts && f `elem` ["html", "html4", "html5"])
      ))
     then return $ text str
