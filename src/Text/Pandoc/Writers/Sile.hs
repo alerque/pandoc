@@ -629,15 +629,15 @@ inlineToSile (Span (id',classes,_) ils) = do
                              braces ("\\label" <> braces (text ref))
   fmap (linkAnchor <>)
     ((if noEmph then inCmd "textup" else id) .
-     (if noStrong then inCmd "textnormal" else id) .
-     (if noSmallCaps then inCmd "textnormal" else id) .
+     (if noStrong then inCmd "font[weight=400]" else id) .
+     (if noSmallCaps then inCmd "font[weight=400]" else id) .
      (if not (noEmph || noStrong || noSmallCaps)
          then braces
          else id)) `fmap` inlineListToSile ils
 inlineToSile (Emph lst) =
-  inlineListToSile lst >>= return . inCmd "emph"
+  inlineListToSile lst >>= return . inCmd "font[style=italic]"
 inlineToSile (Strong lst) =
-  inlineListToSile lst >>= return . inCmd "textbf"
+  inlineListToSile lst >>= return . inCmd "font[weight=800]"
 inlineToSile (Strikeout lst) = do
   -- we need to protect VERB in an mbox or we get an error
   -- see #1294
