@@ -129,7 +129,7 @@ blockToOrg (Para inlines) = do
 blockToOrg (RawBlock "html" str) =
   return $ blankline $$ "#+BEGIN_HTML" $$
            nest 2 (text str) $$ "#+END_HTML" $$ blankline
-blockToOrg (RawBlock f str) | f `elem` ["org", "latex", "tex"] =
+blockToOrg (RawBlock f str) | f `elem` ["org", "latex", "tex","sile","sil"] =
   return $ text str
 blockToOrg (RawBlock _ _) = return empty
 blockToOrg HorizontalRule = return $ blankline $$ "--------------" $$ blankline
@@ -271,7 +271,7 @@ inlineToOrg (Math t str) = do
   return $ if t == InlineMath
               then "$" <> text str <> "$"
               else "$$" <> text str <> "$$"
-inlineToOrg (RawInline f str) | f == "tex" || f == "latex" = return $ text str
+inlineToOrg (RawInline f str) | f == "tex" || f == "latex" || f = "sile" || f = "sil" = return $ text str
 inlineToOrg (RawInline _ _) = return empty
 inlineToOrg (LineBreak) = return (text "\\\\" <> cr)
 inlineToOrg Space = return space
