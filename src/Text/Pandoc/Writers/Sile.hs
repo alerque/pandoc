@@ -106,7 +106,7 @@ pandocToSile options (Pandoc meta blocks) = do
               (fmap (render colwidth) . blockListToSile)
               (fmap (render colwidth) . inlineListToSile)
               meta
-  let bookClasses = ["memoir","book","report","scrreprt","scrbook"]
+  let bookClasses = ["book"]
   let documentClass = case P.parse (do P.skipMany (P.satisfy (/='\\'))
                                        P.string "\\documentclass"
                                        P.skipMany (P.satisfy (/='{'))
