@@ -26,6 +26,7 @@
 - Bradley Kuhn
 - Brent Yorgey
 - Bryan O'Sullivan
+- Caleb Maclennan
 - Caleb McDaniel
 - Calvin Beck
 - Carlos Sosa
