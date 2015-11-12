@@ -481,6 +481,12 @@ blockToMarkdown' opts b@(RawBlock f str) = do
                     text str <> text "\n"
                 | isEnabled Ext_raw_attribute opts -> rawAttribBlock
                 | otherwise -> renderEmpty
+      | f `elem` ["sile", "sil"] ->
+            case () of
+              _ | isEnabled Ext_raw_sile opts -> return $
+                    text str <> text "\n"
+                | isEnabled Ext_raw_attribute opts -> rawAttribBlock
+                | otherwise -> renderEmpty
       | isEnabled Ext_raw_attribute opts -> rawAttribBlock
       | otherwise -> renderEmpty
 blockToMarkdown' opts HorizontalRule = do
@@ -1153,6 +1159,11 @@ inlineToMarkdown opts il@(RawInline f str) = do
       | f `elem` ["latex", "tex"] ->
             case () of
               _ | isEnabled Ext_raw_tex opts -> return $ text str
+                | isEnabled Ext_raw_attribute opts -> rawAttribInline
+                | otherwise -> renderEmpty
+      | f `elem` ["sile", "sil"] ->
+            case () of
+              _ | isEnabled Ext_raw_sile opts -> return $ text str
                 | isEnabled Ext_raw_attribute opts -> rawAttribInline
                 | otherwise -> renderEmpty
       | isEnabled Ext_raw_attribute opts -> rawAttribInline
