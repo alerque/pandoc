@@ -64,7 +64,7 @@ data WriterState =
               , stUrl           :: Bool          -- true if document has visible URL link
               , stGraphics      :: Bool          -- true if document contains images
               , stLHS           :: Bool          -- true if document has literate haskell code
-              , stBook          :: Bool          -- true if document uses book or memoir class
+              , stBook          :: Bool          -- true if document uses book class
               , stCsquotes      :: Bool          -- true if document uses csquotes
               , stHighlighting  :: Bool          -- true if document has highlighted code
               , stInternalLinks :: [String]      -- list of internal link targets
@@ -106,7 +106,7 @@ pandocToSile options (Pandoc meta blocks) = do
               (fmap (render colwidth) . blockListToSile)
               (fmap (render colwidth) . inlineListToSile)
               meta
-  let bookClasses = ["memoir","book","report","scrreprt","scrbook"]
+  let bookClasses = ["book"]
   let documentClass = case P.parse (do P.skipMany (P.satisfy (/='\\'))
                                        P.string "\\documentclass"
                                        P.skipMany (P.satisfy (/='{'))
