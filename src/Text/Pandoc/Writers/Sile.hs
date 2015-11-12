@@ -282,7 +282,7 @@ blockToSile (CodeBlock (identifier,classes,keyvalAttr) str) = do
   let linkAnchor = if null identifier
                       then empty
                       else "\\hypertarget" <> braces (text ref) <>
-                                braces ("\\label" <> braces (text ref))
+                                braces ("%\\label" <> braces (text ref))
   let lhsCodeBlock = do
         modify $ \s -> s{ stLHS = True }
         return $ flush (linkAnchor $$ "\\begin{code}" $$ text str $$
@@ -563,7 +563,7 @@ sectionHeader unnumbered ref level lst = do
   let headerWith x y = refLabel $ text x <> y <>
                              if null ref
                                 then empty
-                                else text "\\label" <> braces lab
+                                else text "%\\label" <> braces lab
   let sectionType = case level' of
                           0  -> "chapter"
                           1  -> "section"
