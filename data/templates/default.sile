@@ -1,19 +1,27 @@
 \begin[$if(papersize)$papersize=$papersize$,$endif$class=$documentclass$]{document}
+$for(include)$
+\include[src=$include$]
+$endfor$
 \script[src=packages/url]
-\script[src=packages/footnotes]
 \script[src=packages/pdf]
-$if(language)$\font[language=$language$]$endif$
-$if(script)$\font[script=$script$]$endif$
+\script[src=packages/footnotes]
+\script[src=packages/transform]
 $if(links-as-notes)$
 \begin{script}
---Make links footnotes instead of hotlinks:
 SILE.registerCommand("href", function(content)
   --SILE.process(content)
   SILE.call("url", {}, content)
   SILE.call("footnote", {}, content)
 end)
 \end{script}
-\set[parameter=document.baselineskip,value=3ex]
 $endif$
+\font[$if(language)$language=$language$$endif$$if(script)$,script=$script$$endif$$if(mainfont)$,family=$mainfont$$endif$$if(fontsize)$,size=$fontsize$$endif$]
+\set[parameter=linebreak.emergencyStretch, value=1em]
+\define[command=book:chapterfont]{\font[$if(sansfont)$family=$sansfont$$endif$,weight=800,size=22pt]{\process}}
+\define[command=book:sectionfont]{\font[$if(sansfont)$family=$sansfont$$endif$,weight=800,size=12pt]{\uppercase{\process}}}
+\halftitlepage
+\titlepage
+\publicationpage
+\tableofcontents
 $body$
 \end{document}
