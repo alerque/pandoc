@@ -104,7 +104,7 @@ escapeString = escapeStringUsing $
 
 isRawFormat :: Format -> Bool
 isRawFormat f =
-  f == Format "latex" || f == Format "tex" || f == Format "org"
+  f == Format "latex" || f == Format "tex" || f == Format "org" || f == Format "sile" || f == Format "sil"
 
 -- | Convert Pandoc block element to Org.
 blockToOrg :: Block         -- ^ Block element

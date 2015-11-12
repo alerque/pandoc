@@ -159,7 +159,7 @@ blockToTexinfo (CodeBlock _ str) = do
 
 blockToTexinfo (RawBlock f str)
   | f == "texinfo" = return $ text str
-  | f == "latex" || f == "tex" =
+  | f == "latex" || f == "tex" || f == "sile" || f == "sil" =
                       return $ text "@tex" $$ text str $$ text "@end tex"
   | otherwise      = return empty
 
@@ -421,7 +421,7 @@ inlineToTexinfo (Cite _ lst) =
 inlineToTexinfo (Str str) = return $ text (stringToTexinfo str)
 inlineToTexinfo (Math _ str) = return $ inCmd "math" $ text str
 inlineToTexinfo (RawInline f str)
-  | f == "latex" || f == "tex" =
+  | f == "latex" || f == "tex" || f == "sile" || f == "sil" =
                       return $ text "@tex" $$ text str $$ text "@end tex"
   | f == "texinfo" =  return $ text str
   | otherwise      =  return empty
