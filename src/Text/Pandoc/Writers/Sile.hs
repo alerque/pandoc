@@ -38,16 +38,17 @@ import Text.Pandoc.Options
 import Text.Pandoc.Templates
 import Text.Printf ( printf )
 import Network.URI ( isURI, unEscapeString )
-import Data.List ( (\\), isInfixOf, stripPrefix, intercalate, intersperse )
+import Data.Aeson (object, (.=))
+import Data.List ( (\\), isInfixOf, stripPrefix, intercalate, intersperse, nub, nubBy )
 import Data.Char ( toLower, isPunctuation, isAscii, isLetter, isDigit, ord )
 import Data.Maybe ( fromMaybe )
-import Data.Aeson.Types ( (.:), parseMaybe, withObject )
+import qualified Data.Text as T
 import Control.Applicative ((<|>))
 import Control.Monad.State
 import qualified Text.Parsec as P
 import Text.Pandoc.Pretty
-import Text.Pandoc.Highlighting (highlight, styleToLaTeX,
-                                 formatLaTeXInline, formatLaTeXBlock,
+import Text.Pandoc.Highlighting (highlight, styleToSile,
+                                 formatSileInline, formatSileBlock,
                                  toListingsLanguage)
 
 data WriterState =
@@ -116,7 +117,7 @@ pandocToSile options (Pandoc meta blocks) = do
                               Right r -> r
                               Left _  -> ""
   case lookup "documentclass" (writerVariables options) `mplus`
-        parseMaybe (withObject "object" (.: "documentclass")) metadata of
+        fmap stringify (lookupMeta "documentclass" meta) of
          Just x  | x `elem` bookClasses -> modify $ \s -> s{stBook = True}
                  | otherwise            -> return ()
          Nothing | documentClass `elem` bookClasses
@@ -138,7 +139,7 @@ pandocToSile options (Pandoc meta blocks) = do
   st <- get
   titleMeta <- stringToSile TextString $ stringify $ docTitle meta
   authorsMeta <- mapM (stringToSile TextString . stringify) $ docAuthors meta
-  let (mainlang, otherlang) =
+  let docLangs = nub $ query (extract "lang") blocks
        case (reverse . splitBy (==',') . filter (/=' ')) `fmap`
             getField "lang" metadata of
               Just (m:os) -> (m, reverse os)
@@ -166,7 +167,7 @@ pandocToSile options (Pandoc meta blocks) = do
                   defField "mainlang" mainlang $
                   defField "otherlang" otherlang $
                   (if stHighlighting st
-                      then defField "highlighting-macros" (styleToLaTeX
+                      then defField "highlighting-macros" (styleToSile
                                 $ writerHighlightStyle options )
                       else id) $
                   (case writerCiteMethod options of
@@ -175,6 +176,8 @@ pandocToSile options (Pandoc meta blocks) = do
                          Biblatex -> defField "biblio-title" biblioTitle .
                                      defField "biblatex" True
                          _        -> id) $
+                  -- set lang to something so polyglossia/babel is included
+                  defField "lang" (if null docLangs then ""::String else "en") $
                   metadata
   return $ if writerStandalone options
               then renderTemplate' template context
@@ -243,19 +246,48 @@ blockToSile (Div (identifier,classes,_) bs) = do
   ref <- toLabel identifier
   let linkAnchor = if null identifier
                       then empty
-                      else "\\hyperdef{}" <> braces (text ref) <>
-                           braces ("\\label" <> braces (text ref))
-  contents <- blockListToSile bs
-  return (linkAnchor $$ contents)
+                      else "\\hypertarget" <> braces (text ref) <>
+                             braces empty
+  let align dir txt = inCmd "begin" dir $$ txt $$ inCmd "end" dir
+  let wrapDir = case lookup "dir" kvs of
+                  Just "rtl" -> align "RTL"
+                  Just "ltr" -> align "LTR"
+                  _          -> id
+      wrapLang txt = case lookup "lang" kvs of
+                       Just lng -> let (l, o) = toPolyglossiaEnv lng
+                                       ops = if null o
+                                                then ""
+                                                else brackets $ text o
+                                   in  inCmd "begin" (text l) <> ops
+                                       $$ blankline <> txt <> blankline
+                                       $$ inCmd "end" (text l)
+                       Nothing  -> txt
+      wrapNotes txt = if beamer && "notes" `elem` classes
+                          then "\\note" <> braces txt -- speaker notes
+                          else linkAnchor $$ txt
+  fmap (wrapDir . wrapLang . wrapNotes) $ blockListToSile bs
 blockToSile (Plain lst) =
   inlineListToSile $ dropWhile isLineBreakOrSpace lst
 -- title beginning with fig: indicates that the image is a figure
 blockToSile (Para [Image txt (src,'f':'i':'g':':':tit)]) = do
   inNote <- gets stInNote
+  modify $ \st -> st{ stInMinipage = True, stNotes = [] }
   capt <- inlineListToSile txt
+  notes <- gets stNotes
+  modify $ \st -> st{ stInMinipage = False, stNotes = [] }
+  -- We can't have footnotes in the list of figures, so remove them:
+  captForLof <- if null notes
+                   then return empty
+                   else brackets <$> inlineListToSile (walk deNote txt)
   img <- inlineToSile (Image txt (src,tit))
-  return $ "\\begin{figure}[htbp]" $$ "\\centering" $$ img $$
-                      ("\\caption" <> braces capt) $$ "\\end{figure}"
+  let footnotes = notesToSile notes
+  return $ if inNote
+              -- can't have figures in notes
+              then "\\begin{center}" $$ img $+$ capt $$ "\\end{center}"
+              else "\\begin{figure}[htbp]" $$ "\\centering" $$ img $$
+                    ("\\caption" <> captForLof <> braces capt) $$
+                    "\\end{figure}" $$
+                    footnotes
 blockToSile (Para [Str ".",Space,Str ".",Space,Str "."]) = do
   inlineListToSile [Str ".",Space,Str ".",Space,Str "."]
 blockToSile (Para lst) =
@@ -271,7 +303,7 @@ blockToSile (CodeBlock (identifier,classes,keyvalAttr) str) = do
   ref <- toLabel identifier
   let linkAnchor = if null identifier
                       then empty
-                      else "\\hyperdef{}" <> braces (text ref) <>
+                      else "\\hypertarget" <> braces (text ref) <>
                                 braces ("\\label" <> braces (text ref))
   let lhsCodeBlock = do
         modify $ \s -> s{ stLHS = True }
@@ -309,7 +341,7 @@ blockToSile (CodeBlock (identifier,classes,keyvalAttr) str) = do
         return $ flush ("\\begin{lstlisting}" <> printParams $$ text str $$
                  "\\end{lstlisting}") $$ cr
   let highlightedCodeBlock =
-        case highlight formatLaTeXBlock ("",classes,keyvalAttr) str of
+        case highlight formatSileBlock ("",classes,keyvalAttr) str of
                Nothing -> rawCodeBlock
                Just  h -> modify (\st -> st{ stHighlighting = True }) >>
                           return (flush $ linkAnchor $$ text h)
@@ -478,19 +510,20 @@ tableCellToSile header (width, align, blocks) = do
   return $ ("\\begin{minipage}" <> valign <>
             braces (text (printf "%.2f\\columnwidth" width)) <>
             (halign <> "\\strut" <> cr <> cellContents <> cr) <>
-            "\\strut\\end{minipage}")
-          $$ case notes of
-                  [] -> empty
-                  ns -> (case length ns of
+            "\\strut\\end{minipage}") $$
+            notesToSile notes
+notesToSile :: [Doc] -> Doc
+notesToSile [] = empty
+notesToSile ns = (case length ns of
                               n | n > 1 -> "\\addtocounter" <>
                                            braces "footnote" <>
                                            braces (text $ show $ 1 - n)
                                 | otherwise -> empty)
-                        $$
-                        vcat (intersperse
-                          ("\\addtocounter" <> braces "footnote" <> braces "1")
-                          $ map (\x -> "\\footnotetext" <> braces x)
-                          $ reverse ns)
+                   $$
+                   vcat (intersperse
+                     ("\\addtocounter" <> braces "footnote" <> braces "1")
+                     $ map (\x -> "\\footnotetext" <> braces x)
+                     $ reverse ns)
 
 listItemToSile :: [Block] -> State WriterState Doc
 listItemToSile lst
@@ -498,26 +531,18 @@ listItemToSile lst
   -- element in an item. This will look ugly in Sile regardless, but
   -- this will keep the typesetter from throwing an error.
   | ((Header _ _ _) :_) <- lst =
-    blockListToSile lst >>= return . (text "\\listitem ~" $$) . (nest 2)
-  | otherwise = blockListToSile lst >>= return .  (text "\\listitem" $$) .
-                      (nest 2)
+    blockListToSile lst >>= return . (inCmd "listitem")
+  | otherwise = blockListToSile lst >>= return .  (inCmd "listitem")
 
 defListItemToSile :: ([Inline], [[Block]]) -> State WriterState Doc
 defListItemToSile (term, defs) = do
     term' <- inlineListToSile term
-    -- put braces around term if it contains an internal link,
-    -- since otherwise we get bad bracket interactions: \item[\hyperref[..]
-    let isInternalLink (Link _ ('#':_,_)) = True
-        isInternalLink _                  = False
-    let term'' = if any isInternalLink term
-                    then braces term'
-                    else term'
     def'  <- liftM vsep $ mapM blockListToSile defs
     return $ case defs of
      (((Header _ _ _) : _) : _) ->
-       "\\listitem" <> brackets term'' <> " ~ " $$ def'
+       "\\listitem" <> brackets term' <> " ~ " $$ def'
      _                          ->
-       "\\listitem" <> brackets term'' $$ def'
+       "\\listitem" <> brackets term' $$ def'
 
 -- | Craft the section header, inserting the secton reference, if supplied.
 sectionHeader :: Bool    -- True for unnumbered
@@ -552,15 +577,14 @@ sectionHeader unnumbered ref level lst = do
   let level' = if book || writerChapters opts then level - 1 else level
   internalLinks <- gets stInternalLinks
   let refLabel x = (if ref `elem` internalLinks
-                       then text "\\hyperdef"
-                                <> braces empty
+                       then text "\\hypertarget"
                                 <> braces lab
                                 <> braces x
                        else x)
   let headerWith x y = refLabel $ text x <> y <>
                              if null ref
                                 then empty
-                                else text "%\\font" <> braces lab
+                                else text "\\label" <> braces lab
   let sectionType = case level' of
                           0  -> "chapter"
                           1  -> "section"
@@ -621,15 +645,19 @@ inlineToSile (Span (id',classes,_) ils) = do
   let noEmph = "csl-no-emph" `elem` classes
   let noStrong = "csl-no-strong" `elem` classes
   let noSmallCaps = "csl-no-smallcaps" `elem` classes
+  let rtl = ("dir","rtl") `elem` kvs
+  let ltr = ("dir","ltr") `elem` kvs
   ref <- toLabel id'
   let linkAnchor = if null id'
                       then empty
-                      else "\\hyperdef{}" <> braces (text ref) <>
-                             braces ("\\label" <> braces (text ref))
+                      else "\\protect\\hypertarget" <> braces (text ref) <>
+                             braces empty
   fmap (linkAnchor <>)
     ((if noEmph then inCmd "textup" else id) .
      (if noStrong then inCmd "font[weight=400]" else id) .
      (if noSmallCaps then inCmd "font[weight=400]" else id) .
+     (if rtl then inCmd "RL" else id) .
+     (if ltr then inCmd "LR" else id) .
      (if not (noEmph || noStrong || noSmallCaps)
          then braces
          else id)) `fmap` inlineListToSile ils
@@ -672,7 +700,7 @@ inlineToSile (Code (_,classes,_) str) = do
                           []    -> '!'
            return $ text $ "\\lstinline" ++ [chr] ++ str ++ [chr]
          highlightCode = do
-           case highlight formatLaTeXInline ("",classes,[]) str of
+           case highlight formatSileInline ("",classes,[]) str of
                   Nothing -> rawCode
                   Just  h -> modify (\st -> st{ stHighlighting = True }) >>
                              return (text h)
@@ -711,7 +739,7 @@ inlineToSile Space = return space
 inlineToSile (Link txt ('#':ident, _)) = do
   contents <- inlineListToSile txt
   lab <- toLabel ident
-  return $ text "\\hyperref" <> brackets (text lab) <> braces contents
+  return $ text "\\protect\\hyperlink" <> braces (text lab) <> braces contents
 inlineToSile (Link txt (src, _)) =
   case txt of
         [Str x] | escapeURI x == src ->  -- autolink
@@ -862,3 +890,24 @@ citationsToBiblatex _ = return empty
 getListingsLanguage :: [String] -> Maybe String
 getListingsLanguage [] = Nothing
 getListingsLanguage (x:xs) = toListingsLanguage x <|> getListingsLanguage xs
+
+-- Extract a key from divs and spans
+extract :: String -> Block -> [String]
+extract key (Div attr _)     = lookKey key attr
+extract key (Plain ils)      = concatMap (extractInline key) ils
+extract key (Para ils)       = concatMap (extractInline key) ils
+extract key (Header _ _ ils) = concatMap (extractInline key) ils
+extract _ _                  = []
+
+-- Extract a key from spans
+extractInline :: String -> Inline -> [String]
+extractInline key (Span attr _) = lookKey key attr
+extractInline _ _               = []
+
+-- Look up a key in an attribute and give a list of its values
+lookKey :: String -> Attr -> [String]
+lookKey key (_,_,kvs) =  maybe [] words $ lookup key kvs
+
+deNote :: Inline -> Inline
+deNote (Note _) = RawInline (Format "sile") ""
+deNote x = x
