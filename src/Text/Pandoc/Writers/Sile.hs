@@ -240,7 +240,7 @@ blockToSile (Div (identifier,classes,kvs) bs) = do
   ref <- toLabel identifier
   let linkAnchor = if null identifier
                       then empty
-                      else "\\hypertarget" <> braces (text ref) <>
+                      else "\\pdf:link" <> braces (text ref) <>
                              braces empty
   contents <- blockListToSile bs
   return (linkAnchor $$ contents)
@@ -281,7 +281,7 @@ blockToSile (CodeBlock (identifier,classes,keyvalAttr) str) = do
   ref <- toLabel identifier
   let linkAnchor = if null identifier
                       then empty
-                      else "\\hypertarget" <> braces (text ref) <>
+                      else "\\pdf:link" <> braces (text ref) <>
                                 braces ("%\\label" <> braces (text ref))
   let lhsCodeBlock = do
         modify $ \s -> s{ stLHS = True }
@@ -556,7 +556,7 @@ sectionHeader unnumbered ref level lst = do
   let level' = if book || writerChapters opts then level - 1 else level
   internalLinks <- gets stInternalLinks
   let refLabel x = (if ref `elem` internalLinks
-                       then text "\\hypertarget"
+                       then text "\\pdf:link"
                                 <> braces lab
                                 <> braces x
                        else x)
@@ -629,7 +629,7 @@ inlineToSile (Span (id',classes,kvs) ils) = do
   ref <- toLabel id'
   let linkAnchor = if null id'
                       then empty
-                      else "\\protect\\hypertarget" <> braces (text ref) <>
+                      else "\\protect\\pdf:link" <> braces (text ref) <>
                              braces empty
   fmap (linkAnchor <>)
     ((if noEmph then inCmd "textup" else id) .
@@ -718,7 +718,7 @@ inlineToSile Space = return space
 inlineToSile (Link txt ('#':ident, _)) = do
   contents <- inlineListToSile txt
   lab <- toLabel ident
-  return $ text "\\protect\\hyperlink" <> braces (text lab) <> braces contents
+  return $ text "\\pdf:link" <> braces (text lab) <> braces contents
 inlineToSile (Link txt (src, _)) =
   case txt of
         [Str x] | escapeURI x == src ->  -- autolink
@@ -731,7 +731,7 @@ inlineToSile (Link txt (src, _)) =
                 src' <- stringToSile URLString (escapeURI src)
                 contents <- inlineListToSile txt
                 return $ "\\href" <> braces (text src') <>
-                   braces ("\\nolinkurl" <> braces contents)
+                   braces ("\\url" <> braces contents)
         _ -> do contents <- inlineListToSile txt
                 src' <- stringToSile URLString (escapeURI src)
                 return $ text ("\\href{" ++ src' ++ "}{") <>
