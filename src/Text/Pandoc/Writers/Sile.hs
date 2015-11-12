@@ -64,7 +64,7 @@ data WriterState =
               , stUrl           :: Bool          -- true if document has visible URL link
               , stGraphics      :: Bool          -- true if document contains images
               , stLHS           :: Bool          -- true if document has literate haskell code
-              , stBook          :: Bool          -- true if document uses book or memoir class
+              , stBook          :: Bool          -- true if document uses book class
               , stCsquotes      :: Bool          -- true if document uses csquotes
               , stHighlighting  :: Bool          -- true if document has highlighted code
               , stInternalLinks :: [String]      -- list of internal link targets
