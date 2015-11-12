@@ -151,9 +151,9 @@ pandocToSile options (Pandoc meta blocks) = do
                   defField "body" main $
                   defField "title-meta" titleMeta $
                   defField "author-meta" (intercalate "; " authorsMeta) $
-                  defField "documentclass" ( if stBook st
-                                                    then "book"
-                                                    else "book") $
+                  defField "documentclass" (if stBook st
+                                               then ("book" :: String)
+                                               else ("plain" :: String)) $
                   defField "verbatim-in-note" (stVerbInNote st) $
                   defField "tables" (stTable st) $
                   defField "strikeout" (stStrikeout st) $
