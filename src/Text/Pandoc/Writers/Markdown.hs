@@ -345,7 +345,7 @@ notesAndRefs opts = do
         if | writerReferenceLocation opts == EndOfDocument -> empty
            | isEmpty notes' && isEmpty refs' -> empty
            | otherwise -> blankline
-  
+
   return $
     (if isEmpty notes' then empty else blankline <> notes') <>
     (if isEmpty refs' then empty else blankline <> refs') <>
@@ -410,7 +410,7 @@ blockToMarkdown' opts (RawBlock f str)
                 else if isEnabled Ext_markdown_attribute opts
                         then text (addMarkdownAttribute str) <> text "\n"
                         else text str <> text "\n"
-  | f `elem` ["latex", "tex"] && isEnabled Ext_raw_tex opts = do
+  | f `elem` ["latex", "tex", "sile", "sil"] && isEnabled Ext_raw_tex opts = do
     plain <- asks envPlain
     return $ if plain
                 then empty
@@ -992,7 +992,7 @@ inlineToMarkdown opts (RawInline f str) = do
   plain <- asks envPlain
   if not plain &&
      ( f == "markdown" ||
-       (isEnabled Ext_raw_tex opts && (f == "latex" || f == "tex")) ||
+       (isEnabled Ext_raw_tex opts && (f == "latex" || f == "tex" || f == "sile" || f == "sil" )) ||
        (isEnabled Ext_raw_html opts && f == "html") )
     then return $ text str
     else return empty
