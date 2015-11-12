@@ -458,11 +458,11 @@ fixLineBreaks' :: [Inline] -> [Inline]
 fixLineBreaks' ils = case splitBy (== LineBreak) ils of
                        []     -> []
                        [xs]   -> xs
-                       chunks -> RawInline "tex" "\\vtop{" :
+                       chunks -> RawInline "sile" "\\vtop{" :
                                  concatMap tohbox chunks ++
-                                 [RawInline "tex" "}"]
-  where tohbox ys = RawInline "tex" "\\hbox{\\strut " : ys ++
-                    [RawInline "tex" "}"]
+                                 [RawInline "sile" "}"]
+  where tohbox ys = RawInline "sile" "\\hbox{\\strut " : ys ++
+                    [RawInline "sile" "}"]
 
 -- We also change display math to inline math, since display
 -- math breaks in simple tables.
