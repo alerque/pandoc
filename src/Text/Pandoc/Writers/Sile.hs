@@ -160,10 +160,8 @@ pandocToSile options (Pandoc meta blocks) = do
                   defField "graphics" (stGraphics st) $
                   defField "book-class" (stBook st) $
                   defField "listings" (writerListings options || stLHS st) $
-                  defField "mainlang" mainlang $
-                  defField "otherlang" otherlang $
                   (if stHighlighting st
-                      then defField "highlighting-macros" (styleToSile
+                      then defField "highlighting-macros" (styleToLaTeX
                                 $ writerHighlightStyle options )
                       else id) $
                   (case writerCiteMethod options of
@@ -244,24 +242,8 @@ blockToSile (Div (identifier,classes,kvs) bs) = do
                       then empty
                       else "\\hypertarget" <> braces (text ref) <>
                              braces empty
-  let align dir txt = inCmd "begin" dir $$ txt $$ inCmd "end" dir
-  let wrapDir = case lookup "dir" kvs of
-                  Just "rtl" -> align "RTL"
-                  Just "ltr" -> align "LTR"
-                  _          -> id
-      wrapLang txt = case lookup "lang" kvs of
-                       Just lng -> let (l, o) = toPolyglossiaEnv lng
-                                       ops = if null o
-                                                then ""
-                                                else brackets $ text o
-                                   in  inCmd "begin" (text l) <> ops
-                                       $$ blankline <> txt <> blankline
-                                       $$ inCmd "end" (text l)
-                       Nothing  -> txt
-      wrapNotes txt = if beamer && "notes" `elem` classes
-                          then "\\note" <> braces txt -- speaker notes
-                          else linkAnchor $$ txt
-  fmap (wrapDir . wrapLang . wrapNotes) $ blockListToSile bs
+  contents <- blockListToSile bs
+  return (linkAnchor $$ contents)
 blockToSile (Plain lst) =
   inlineListToSile $ dropWhile isLineBreakOrSpace lst
 -- title beginning with fig: indicates that the image is a figure
@@ -337,7 +319,7 @@ blockToSile (CodeBlock (identifier,classes,keyvalAttr) str) = do
         return $ flush ("\\begin{lstlisting}" <> printParams $$ text str $$
                  "\\end{lstlisting}") $$ cr
   let highlightedCodeBlock =
-        case highlight formatSileBlock ("",classes,keyvalAttr) str of
+        case highlight formatLaTeXBlock ("",classes,keyvalAttr) str of
                Nothing -> rawCodeBlock
                Just  h -> modify (\st -> st{ stHighlighting = True }) >>
                           return (flush $ linkAnchor $$ text h)
@@ -697,7 +679,7 @@ inlineToSile (Code (_,classes,_) str) = do
                           []    -> '!'
            return $ text $ "\\lstinline" ++ [chr] ++ str ++ [chr]
          highlightCode = do
-           case highlight formatSileInline ("",classes,[]) str of
+           case highlight formatLaTeXInline ("",classes,[]) str of
                   Nothing -> rawCode
                   Just  h -> modify (\st -> st{ stHighlighting = True }) >>
                              return (text h)
