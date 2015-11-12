@@ -19,7 +19,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 -}
 
 {- |
-   Module      : Text.Pandoc.Writers.SILE
+   Module      : Text.Pandoc.Writers.Sile
    Copyright   : Copyright (C) 2006-2015 John MacFarlane
    License     : GNU GPL, version 2 or above
 
@@ -27,7 +27,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
    Stability   : alpha
    Portability : portable
 
-Conversion of 'Pandoc' format into SILE.
+Conversion of 'Pandoc' format into Sile.
 -}
 module Text.Pandoc.Writers.Sile ( writeSile ) where
 import Text.Pandoc.Definition
@@ -47,8 +47,8 @@ import Control.Applicative ((<|>))
 import Control.Monad.State
 import qualified Text.Parsec as P
 import Text.Pandoc.Pretty
-import Text.Pandoc.Highlighting (highlight, styleToSile,
-                                 formatSileInline, formatSileBlock,
+import Text.Pandoc.Highlighting (highlight, styleToLaTeX,
+                                 formatLaTeXInline, formatLaTeXBlock,
                                  toListingsLanguage)
 
 data WriterState =
@@ -140,10 +140,6 @@ pandocToSile options (Pandoc meta blocks) = do
   titleMeta <- stringToSile TextString $ stringify $ docTitle meta
   authorsMeta <- mapM (stringToSile TextString . stringify) $ docAuthors meta
   let docLangs = nub $ query (extract "lang") blocks
-       case (reverse . splitBy (==',') . filter (/=' ')) `fmap`
-            getField "lang" metadata of
-              Just (m:os) -> (m, reverse os)
-              _           -> ("", [])
   let context  =  defField "toc" (writerTableOfContents options) $
                   defField "toc-depth" (show (writerTOCDepth options -
                                               if stBook st
@@ -242,7 +238,7 @@ isLineBreakOrSpace _ = False
 blockToSile :: Block     -- ^ Block to convert
              -> State WriterState Doc
 blockToSile Null = return empty
-blockToSile (Div (identifier,classes,_) bs) = do
+blockToSile (Div (identifier,classes,kvs) bs) = do
   ref <- toLabel identifier
   let linkAnchor = if null identifier
                       then empty
@@ -512,6 +508,7 @@ tableCellToSile header (width, align, blocks) = do
             (halign <> "\\strut" <> cr <> cellContents <> cr) <>
             "\\strut\\end{minipage}") $$
             notesToSile notes
+
 notesToSile :: [Doc] -> Doc
 notesToSile [] = empty
 notesToSile ns = (case length ns of
@@ -641,7 +638,7 @@ isQuoted _ = False
 -- | Convert inline element to Sile
 inlineToSile :: Inline    -- ^ Inline to convert
               -> State WriterState Doc
-inlineToSile (Span (id',classes,_) ils) = do
+inlineToSile (Span (id',classes,kvs) ils) = do
   let noEmph = "csl-no-emph" `elem` classes
   let noStrong = "csl-no-strong" `elem` classes
   let noSmallCaps = "csl-no-smallcaps" `elem` classes
@@ -744,17 +741,17 @@ inlineToSile (Link txt (src, _)) =
   case txt of
         [Str x] | escapeURI x == src ->  -- autolink
              do modify $ \s -> s{ stUrl = True }
-                src' <- stringToSile URLString src
+                src' <- stringToSile URLString (escapeURI src)
                 return $ text $ "\\url{" ++ src' ++ "}"
         [Str x] | Just rest <- stripPrefix "mailto:" src,
                   escapeURI x == rest -> -- email autolink
              do modify $ \s -> s{ stUrl = True }
-                src' <- stringToSile URLString src
+                src' <- stringToSile URLString (escapeURI src)
                 contents <- inlineListToSile txt
                 return $ "\\href" <> braces (text src') <>
                    braces ("\\nolinkurl" <> braces contents)
         _ -> do contents <- inlineListToSile txt
-                src' <- stringToSile URLString src
+                src' <- stringToSile URLString (escapeURI src)
                 return $ text ("\\href{" ++ src' ++ "}{") <>
                          contents <> char '}'
 inlineToSile (Image _ (source, _)) = do
@@ -762,7 +759,7 @@ inlineToSile (Image _ (source, _)) = do
   let source' = if isURI source
                    then source
                    else unEscapeString source
-  source'' <- stringToSile URLString source'
+  source'' <- stringToSile URLString (escapeURI source')
   inHeading <- gets stInHeading
   return $
     (if inHeading then "\\protect\\includegraphics" else "\\includegraphics")
