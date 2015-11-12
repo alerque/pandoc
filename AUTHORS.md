@@ -35,6 +35,7 @@
 - Brent Yorgey
 - Brian Leung
 - Bryan O'Sullivan
+- Caleb Maclennan
 - Caleb McDaniel
 - Calvin Beck
 - Carlos Sosa
