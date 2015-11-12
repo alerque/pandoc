@@ -329,8 +329,7 @@ blockToSile (BulletList lst) = do
   let spacing = if isTightList lst
                    then text "\\tightlist"
                    else empty
-  return $ text ("\\begin{itemize}") $$ spacing $$ vcat items $$
-             "\\end{itemize}"
+  return $ spacing $$ vcat items
 blockToSile (OrderedList _ []) = return empty -- otherwise latex error
 blockToSile (OrderedList (start, numstyle, numdelim) lst) = do
   st <- get
@@ -499,8 +498,8 @@ listItemToSile lst
   -- element in an item. This will look ugly in Sile regardless, but
   -- this will keep the typesetter from throwing an error.
   | ((Header _ _ _) :_) <- lst =
-    blockListToSile lst >>= return . (text "\\item ~" $$) . (nest 2)
-  | otherwise = blockListToSile lst >>= return .  (text "\\item" $$) .
+    blockListToSile lst >>= return . (text "\\listitem ~" $$) . (nest 2)
+  | otherwise = blockListToSile lst >>= return .  (text "\\listitem" $$) .
                       (nest 2)
 
 defListItemToSile :: ([Inline], [[Block]]) -> State WriterState Doc
@@ -516,9 +515,9 @@ defListItemToSile (term, defs) = do
     def'  <- liftM vsep $ mapM blockListToSile defs
     return $ case defs of
      (((Header _ _ _) : _) : _) ->
-       "\\item" <> brackets term'' <> " ~ " $$ def'
+       "\\listitem" <> brackets term'' <> " ~ " $$ def'
      _                          ->
-       "\\item" <> brackets term'' $$ def'
+       "\\listitem" <> brackets term'' $$ def'
 
 -- | Craft the section header, inserting the secton reference, if supplied.
 sectionHeader :: Bool    -- True for unnumbered
