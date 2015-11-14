@@ -31,8 +31,8 @@ $if(language)$
 \font[language=$language$]
 \language[main=$language$]
 $endif$
-$if(script)$
-\font[script=$script$]
+$if(langscript)$
+\font[script=$langscript$]
 $endif$
 $if(mainfont)$
 \font[family=$mainfont$]
