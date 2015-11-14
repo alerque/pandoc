@@ -2,6 +2,9 @@
 $for(include)$
 \include[src=$include$]
 $endfor$
+$for(script)$
+\script[src=$script$]
+$endfor$
 $if(title-meta)$
 \define[command=title]{$title-meta$}
 $endif$
@@ -24,7 +27,19 @@ SILE.registerCommand("href", function(content)
 end)
 \end{script}
 $endif$
-\font[$if(language)$language=$language$$endif$$if(script)$,script=$script$$endif$$if(mainfont)$,family=$mainfont$$endif$$if(fontsize)$,size=$fontsize$$endif$]
+$if(language)$
+\font[language=$language$]
+\language[main=$language$]
+$endif$
+$if(script)$
+\font[script=$script$]
+$endif$
+$if(mainfont)$
+\font[family=$mainfont$]
+$endif$
+$if(fontsize)$
+\font[size=$fontsize$]
+$endif$
 \set[parameter=linebreak.emergencyStretch, value=1em]
 $if(sansfont)$
 \define[command=book:chapterfont]{\font[family=$sansfont$,weight=800,size=20pt]{\process}}
