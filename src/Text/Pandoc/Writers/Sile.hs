@@ -709,9 +709,9 @@ inlineToSile (Math InlineMath str) =
   return $ "\\(" <> text str <> "\\)"
 inlineToSile (Math DisplayMath str) =
   return $ "\\[" <> text str <> "\\]"
-inlineToSile (RawInline f str)
-  | f == Format "sile" || f == Format "sil"
-                        = return $ text str
+inlineToSile (RawInline f x)
+  | f == Format "latex" || f == Format "tex" || f == Format "sile" || f == Format "sil"
+                        = return $ text x
   | otherwise           = return empty
 inlineToSile (LineBreak) = return $ "\\\\" <> cr
 inlineToSile Space = return space
