@@ -1048,6 +1048,8 @@ rawTeXBlock = do
                   rawLaTeXBlock `sepEndBy1` blankline)
         <|> (B.rawBlock "context" . concat <$>
                   rawConTeXtEnvironment `sepEndBy1` blankline)
+        <|> (B.rawBlock "sile" . concat <$>
+                  rawSileEnvironment `sepEndBy1` blankline)
   spaces
   return $ return result
 
