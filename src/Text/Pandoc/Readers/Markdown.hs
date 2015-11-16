@@ -1071,9 +1071,11 @@ rawTeXBlock :: PandocMonad m => MarkdownParser m (F Blocks)
 rawTeXBlock = do
   guardEnabled Ext_raw_tex
   result <- (B.rawBlock "tex" . trim . T.concat <$>
-                many1 ((<>) <$> rawConTeXtEnvironment <*> spnl'))
+                many1 ((++) <$> rawConTeXtEnvironment <*> spnl'))
           <|> (B.rawBlock "tex" . trim . T.concat <$>
-                many1 ((<>) <$> rawLaTeXBlock <*> spnl'))
+                many1 ((++) <$> rawLaTeXBlock <*> spnl'))
+          <|> (B.rawBlock "sile" . trim . T.concat <$>
+                many1 ((++) <$> rawSileEnvironment <*> spnl'))
   return $ case B.toList result of
                 [RawBlock _ cs]
                   | T.all (`elem` [' ','\t','\n']) cs -> return mempty
