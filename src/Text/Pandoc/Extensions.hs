@@ -94,6 +94,7 @@ data Extension =
     | Ext_grid_tables         -- ^ Grid tables (pandoc, reST)
     | Ext_pipe_tables         -- ^ Pipe tables (as in PHP markdown extra)
     | Ext_citations           -- ^ Pandoc/citeproc citations
+    | Ext_raw_sil             -- ^ Allow raw Sile
     | Ext_raw_tex             -- ^ Allow raw TeX (other than math)
     | Ext_raw_html            -- ^ Allow raw HTML
     | Ext_tex_math_dollars    -- ^ TeX math between $..$ or $$..$$
@@ -173,6 +174,7 @@ pandocExtensions = extensionsFromList
   , Ext_grid_tables
   , Ext_pipe_tables
   , Ext_citations
+  , Ext_raw_sil
   , Ext_raw_tex
   , Ext_raw_html
   , Ext_tex_math_dollars
@@ -271,6 +273,7 @@ multimarkdownExtensions = extensionsFromList
   , Ext_raw_html
   , Ext_markdown_attribute
   , Ext_mmd_link_attributes
+  -- , Ext_raw_sil
   -- , Ext_raw_tex
   -- Note: MMD's raw TeX syntax requires raw TeX to be
   -- enclosed in HTML comment
