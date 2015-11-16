@@ -428,6 +428,8 @@ inlineToTextile _ (Math _ str) =
 
 inlineToTextile opts (RawInline f str)
   | f == Format "html" || f == Format "textile" = return str
+  | (f == Format "sile" || f == Format "sil") &&
+     isEnabled Ext_raw_sil opts                 = return str
   | (f == Format "latex" || f == Format "tex") &&
      isEnabled Ext_raw_tex opts                 = return str
   | otherwise                                   = return ""

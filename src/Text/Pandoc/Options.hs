@@ -72,6 +72,7 @@ data Extension =
     | Ext_pipe_tables         -- ^ Pipe tables (as in PHP markdown extra)
     | Ext_citations           -- ^ Pandoc/citeproc citations
     | Ext_raw_tex             -- ^ Allow raw TeX (other than math)
+    | Ext_raw_sil             -- ^ Allow raw Sile
     | Ext_raw_html            -- ^ Allow raw HTML
     | Ext_tex_math_dollars    -- ^ TeX math between $..$ or $$..$$
     | Ext_tex_math_single_backslash  -- ^ TeX math btw \(..\) \[..\]
@@ -135,6 +136,7 @@ pandocExtensions = Set.fromList
   , Ext_pipe_tables
   , Ext_citations
   , Ext_raw_tex
+  , Ext_raw_sil
   , Ext_raw_html
   , Ext_tex_math_dollars
   , Ext_latex_macros
@@ -222,6 +224,7 @@ multimarkdownExtensions = Set.fromList
   , Ext_markdown_attribute
   , Ext_mmd_link_attributes
   , Ext_raw_tex
+  , Ext_raw_sil
   , Ext_tex_math_double_backslash
   , Ext_intraword_underscores
   , Ext_mmd_title_block
