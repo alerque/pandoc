@@ -1103,8 +1103,6 @@ rawTeXBlock = do
                   rawConTeXtEnvironment `sepEndBy1` blankline)
         <|> (B.rawBlock "latex" . concat <$>
                   rawLaTeXBlock `sepEndBy1` blankline)
-        <|> (B.rawBlock "sile" . concat <$>
-                  rawSileEnvironment `sepEndBy1` blankline)
 
   optional blanklines
   return $ return result
