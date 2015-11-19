@@ -339,7 +339,8 @@ blockToSile (BulletList lst) = do
   let spacing = if isTightList lst
                    then text "\\tightlist"
                    else empty
-  return $ spacing $$ vcat items
+  return $ text ("\\begin{listarea}") $$ spacing $$ vcat items $$
+             "\\end{listarea}"
 blockToSile (OrderedList _ []) = return empty -- otherwise latex error
 blockToSile (OrderedList (start, numstyle, numdelim) lst) = do
   st <- get
