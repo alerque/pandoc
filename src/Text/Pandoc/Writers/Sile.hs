@@ -538,20 +538,8 @@ sectionHeader unnumbered ref level lst = do
       noNote x        = x
   let lstNoNotes = walk noNote lst
   txtNoNotes <- inlineListToSile lstNoNotes
-  let star = if unnumbered then text "*" else empty
-  -- footnotes in sections don't work (except for starred variants)
-  -- unless you specify an optional argument:
-  -- \section[mysec]{mysec\footnote{blah}}
-  optional <- if unnumbered || lstNoNotes == lst
-                 then return empty
-                 else do
-                   return $ brackets txtNoNotes
-  let contents = if render Nothing txt == plain
-                    then braces txt
-                    else braces (text "\\texorpdfstring"
-                         <> braces txt
-                         <> braces (text plain))
-  let stuffing = star <> optional <> contents
+  let options = if unnumbered then "numbering=false" else empty
+  let stuffing = brackets options <> braces txt
   book <- gets stBook
   opts <- gets stOptions
   let level' = if book || writerChapters opts then level - 1 else level
@@ -574,20 +562,9 @@ sectionHeader unnumbered ref level lst = do
                           5  -> "subparagraph"
                           _  -> ""
   inQuote <- gets stInQuote
-  let prefix = if inQuote && level' >= 4
-                  then text "\\mbox{}%"
-                  -- needed for \paragraph, \subparagraph in quote environment
-                  -- see http://tex.stackexchange.com/questions/169830/
-                  else empty
   return $ if level' > 5
               then txt
-              else prefix $$
-                   headerWith ('\\':sectionType) stuffing
-                   $$ if unnumbered
-                         then "\\addcontentsline{toc}" <>
-                                braces (text sectionType) <>
-                                braces txtNoNotes
-                         else empty
+              else headerWith ('\\':sectionType) stuffing
 
 -- | Convert list of inline elements to Sile.
 inlineListToSile :: [Inline]  -- ^ Inlines to convert
