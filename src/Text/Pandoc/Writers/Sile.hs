@@ -691,7 +691,10 @@ inlineToSile (RawInline f x)
   | f == Format "latex" || f == Format "tex" || f == Format "sile" || f == Format "sil"
                         = return $ text x
   | otherwise           = return empty
-inlineToSile (LineBreak) = return $ "\\break" <> cr
+-- The extra \relax{} appended here is to work around this bug:
+-- https://github.com/simoncozens/sile/issues/254
+-- and should be removed whet it's fixed
+inlineToSile (LineBreak) = return $ "\\break" <> cr <> "\\relax{}"
 inlineToSile Space = return space
 inlineToSile (Link txt ('#':ident, _)) = do
   contents <- inlineListToSile txt
