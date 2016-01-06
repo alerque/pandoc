@@ -7,7 +7,7 @@ GHCOPTS=-fdiagnostics-color=always
 WEBSITE=../../web/pandoc.org
 REVISION?=1
 
-sile_install: deps
+sile_install:
 	sudo chown caleb:caleb . -R
 	cabal build
 	sudo cabal install --prefix=/usr/local
