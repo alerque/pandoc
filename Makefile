@@ -1,6 +1,11 @@
 version=$(shell grep '^Version:' pandoc.cabal | awk '{print $$2;}')
 pandoc=$(shell find dist -name pandoc -type f -exec ls -t {} \; | head -1)
 
+sile_install:
+	sudo chown caleb:caleb . -R
+	cabal build
+	sudo cabal install --prefix=/usr/local
+
 quick:
 	stack install --flag 'pandoc:embed_data_files' --fast --test --test-arguments='-j4'
 
