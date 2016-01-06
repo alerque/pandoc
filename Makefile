@@ -5,7 +5,7 @@ BRANCH?=master
 RESOLVER=nightly-2017-10-22
 GHCOPTS=-fdiagnostics-color=always -Wall -fno-warn-unused-do-bind -Wincomplete-record-updates -Wnoncanonical-monad-instances -Wnoncanonical-monadfail-instances
 
-sile_install: deps
+sile_install:
 	sudo chown caleb:caleb . -R
 	cabal build
 	sudo cabal install --prefix=/usr/local
@@ -80,4 +80,4 @@ download_stats:
 clean:
 	stack clean
 
-.PHONY: deps quick full haddock install clean test bench changes_github macospkg dist prof download_stats reformat lint weigh doc/lua-filters.md
+.PHONY: quick full haddock install clean test bench changes_github macospkg dist prof download_stats reformat lint weigh doc/lua-filters.md
