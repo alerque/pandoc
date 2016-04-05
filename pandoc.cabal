@@ -383,6 +383,7 @@ library
                    Text.Pandoc.Error,
                    Text.Pandoc.Readers,
                    Text.Pandoc.Readers.HTML,
+                   Text.Pandoc.Readers.Sile,
                    Text.Pandoc.Readers.LaTeX,
                    Text.Pandoc.Readers.LaTeX.Types,
                    Text.Pandoc.Readers.Markdown,
