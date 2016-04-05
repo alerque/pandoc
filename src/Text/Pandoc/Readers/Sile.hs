@@ -277,15 +277,13 @@ blockCommand :: LP Blocks
 blockCommand = try $ do
   name <- anyControlSeq
   guard $ name /= "begin" && name /= "end"
-  star <- option "" (string "*" <* optional sp)
-  let name' = name ++ star
   let raw = do
-        rawcommand <- getRawCommand name'
+        rawcommand <- getRawCommand name
         transformed <- applyMacros' rawcommand
         guard $ transformed /= rawcommand
         notFollowedBy $ parseFromString inlines transformed
         parseFromString blocks transformed
-  lookupListDefault raw [name',name] blockCommands
+  lookupListDefault raw [name] blockCommands
 
 inBrackets :: Inlines -> Inlines
 inBrackets x = str "[" <> x <> str "]"
@@ -419,18 +417,16 @@ inlineCommand = try $ do
   guard $ name /= "begin" && name /= "end"
   guard $ not $ isBlockCommand name
   parseRaw <- getOption readerParseRaw
-  star <- option "" (string "*")
-  let name' = name ++ star
   let raw = do
         rawargs <- withRaw (skipopts *> option "" dimenarg *> many braced)
-        let rawcommand = '\\' : name ++ star ++ snd rawargs
+        let rawcommand = '\\' : name ++ snd rawargs
         transformed <- applyMacros' rawcommand
         if transformed /= rawcommand
            then parseFromString inlines transformed
            else if parseRaw
                    then return $ rawInline "sile" rawcommand
                    else return mempty
-  (lookupListDefault mzero [name',name] inlineCommands <*
+  (lookupListDefault mzero [name] inlineCommands <*
       optional (try (string "{}")))
     <|> raw
 
