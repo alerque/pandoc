@@ -330,6 +330,7 @@ Library
                    Text.Pandoc.MediaBag,
                    Text.Pandoc.Error,
                    Text.Pandoc.Readers.HTML,
+                   Text.Pandoc.Readers.Sile,
                    Text.Pandoc.Readers.LaTeX,
                    Text.Pandoc.Readers.Markdown,
                    Text.Pandoc.Readers.CommonMark,
