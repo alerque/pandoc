@@ -258,8 +258,7 @@ blockToSile (Div (identifier,classes,kvs) bs) = do
   ref <- toLabel identifier
   let linkAnchor = if null identifier
                       then empty
-                      else "\\pdf:link" <> braces (text ref) <>
-                             braces empty
+                      else "\\pdf:link" <> braces (text ref)
   contents <- blockListToSile bs
   return (linkAnchor $$ contents)
 blockToSile (Plain lst) =
@@ -299,20 +298,17 @@ blockToSile (CodeBlock (identifier,classes,keyvalAttr) str) = do
   ref <- toLabel identifier
   let linkAnchor = if null identifier
                       then empty
-                      else "\\pdf:link" <> braces (text ref) <>
-                                braces ("%\\label" <> braces (text ref))
+                      else "\\pdf:link" <> brackets (text ref) <> braces (text ref)
   let lhsCodeBlock = do
         modify $ \s -> s{ stLHS = True }
         return $ flush (linkAnchor $$ "\\begin{code}" $$ text str $$
                             "\\end{code}") $$ cr
   let rawCodeBlock = do
         st <- get
-        env <- if stInNote st
-                  then modify (\s -> s{ stVerbInNote = True }) >>
-                       return "Verbatim"
-                  else return "verbatim"
+        env <- do return "verbatim"
         return $ flush (linkAnchor $$ text ("\\begin{" ++ env ++ "}") $$
-                 text str $$ text ("\\end{" ++ env ++ "}")) <> cr
+                --text str $$ -- TODO: escape braces?
+                 text ("\\end{" ++ env ++ "}")) <> cr
   let listingsCodeBlock = do
         st <- get
         let params = if writerListings (stOptions st)
@@ -564,13 +560,13 @@ sectionHeader unnumbered ref level lst = do
   internalLinks <- gets stInternalLinks
   let refLabel x = (if ref `elem` internalLinks
                        then text "\\pdf:link"
+                                <> brackets x
                                 <> braces lab
-                                <> braces x
                        else x)
   let headerWith x y = refLabel $ text x <> y <>
                              if null ref
                                 then empty
-                                else text "%\\label" <> braces lab
+                                else text "\\label" <> brackets lab
   let sectionType = case level' of
                           0  -> "chapter"
                           1  -> "section"
@@ -620,8 +616,7 @@ inlineToSile (Span (id',classes,kvs) ils) = do
   ref <- toLabel id'
   let linkAnchor = if null id'
                       then empty
-                      else "\\protect\\pdf:link" <> braces (text ref) <>
-                             braces empty
+                      else "\\protect\\pdf:link" <> braces (text ref)
   let cmds = ["textup" | "csl-no-emph" `elem` classes] ++
               ["textnormal" | "csl-no-strong" `elem` classes ||
                               "csl-no-smallcaps" `elem` classes] ++
@@ -716,7 +711,7 @@ inlineToSile Space = return space
 inlineToSile (Link _ txt ('#':ident, _)) = do
   contents <- inlineListToSile txt
   lab <- toLabel ident
-  return $ text "\\pdf:link" <> braces (text lab) <> braces contents
+  return $ text "\\pdf:link" <> brackets contents <> braces (text lab)
 inlineToSile (Link _ txt (src, _)) =
   case txt of
         [Str x] | escapeURI x == src ->  -- autolink
