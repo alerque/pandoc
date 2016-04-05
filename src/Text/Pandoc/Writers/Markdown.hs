@@ -1101,7 +1101,7 @@ inlineToMarkdown opts il@(RawInline f str) = do
      ( f `elem` ["markdown", "markdown_github", "markdown_phpextra",
                  "markdown_mmd", "markdown_strict"] ||
        (isEnabled Ext_raw_tex opts && (f == "latex" || f == "tex" )) ||
-       (isEnabled Ext_raw_sil opts && (f == "sile" || f == "sil" )) ||
+       (isEnabled Ext_raw_sile opts && (f == "sile" || f == "sil" )) ||
        (isEnabled Ext_raw_html opts && f `elem` ["html", "html4", "html5"])
      ))
     then return $ text str
