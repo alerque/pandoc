@@ -38,15 +38,16 @@ import Text.Pandoc.Options
 import Text.Pandoc.Templates
 import Text.Printf ( printf )
 import Network.URI ( isURI, unEscapeString )
-import Data.Aeson (object, (.=))
+import Data.Aeson (object, (.=), FromJSON)
 import Data.List ( (\\), isInfixOf, stripPrefix, intercalate, intersperse, nub, nubBy )
 import Data.Char ( toLower, isPunctuation, isAscii, isLetter, isDigit, ord )
-import Data.Maybe ( fromMaybe )
+import Data.Maybe ( fromMaybe, isJust, catMaybes )
 import qualified Data.Text as T
 import Control.Applicative ((<|>))
 import Control.Monad.State
 import qualified Text.Parsec as P
 import Text.Pandoc.Pretty
+import Text.Pandoc.ImageSize
 import Text.Pandoc.Highlighting (highlight, styleToLaTeX,
                                  formatLaTeXInline, formatLaTeXBlock,
                                  toListingsLanguage)
@@ -95,12 +96,12 @@ pandocToSile options (Pandoc meta blocks) = do
                              _ -> blocks
                    else blocks
   -- see if there are internal links
-  let isInternalLink (Link _ ('#':xs,_))  = [xs]
+  let isInternalLink (Link _ _ ('#':xs,_))  = [xs]
       isInternalLink _                    = []
   modify $ \s -> s{ stInternalLinks = query isInternalLink blocks' }
   let template = writerTemplate options
   -- set stBook depending on documentclass
-  let colwidth = if writerWrapText options
+  let colwidth = if writerWrapText options == WrapAuto
                     then Just $ writerColumns options
                     else Nothing
   metadata <- metaToJSON options
@@ -108,12 +109,7 @@ pandocToSile options (Pandoc meta blocks) = do
               (fmap (render colwidth) . inlineListToSile)
               meta
   let bookClasses = ["book"]
-  let documentClass = case P.parse (do P.skipMany (P.satisfy (/='\\'))
-                                       P.string "\\documentclass"
-                                       P.skipMany (P.satisfy (/='{'))
-                                       P.char '{'
-                                       P.manyTill P.letter (P.char '}')) "template"
-                              template of
+  let documentClass = case P.parse pDocumentClass "template" template of
                               Right r -> r
                               Left _  -> ""
   case lookup "documentclass" (writerVariables options) `mplus`
@@ -125,7 +121,12 @@ pandocToSile options (Pandoc meta blocks) = do
                  | otherwise               -> return ()
   -- check for \usepackage...{csquotes}; if present, we'll use
   -- \enquote{...} for smart quotes:
-  when ("{csquotes}" `isInfixOf` template) $
+  let headerIncludesField :: FromJSON a => Maybe a
+      headerIncludesField = getField "header-includes" metadata
+  let headerIncludes = fromMaybe [] $ mplus
+                       (fmap return headerIncludesField)
+                       headerIncludesField
+  when (any (isInfixOf "{csquotes}") (template : headerIncludes)) $
     modify $ \s -> s{stCsquotes = True}
   let (blocks'', lastHeader) = if writerCiteMethod options == Citeproc then
                                  (blocks', [])
@@ -140,6 +141,15 @@ pandocToSile options (Pandoc meta blocks) = do
   titleMeta <- stringToSile TextString $ stringify $ docTitle meta
   authorsMeta <- mapM (stringToSile TextString . stringify) $ docAuthors meta
   let docLangs = nub $ query (extract "lang") blocks
+  let hasStringValue x = isJust (getField x metadata :: Maybe String)
+  let geometryFromMargins = intercalate [','] $ catMaybes $
+                              map (\(x,y) ->
+                                ((x ++ "=") ++) <$> getField y metadata)
+                              [("lmargin","margin-left")
+                              ,("rmargin","margin-right")
+                              ,("tmargin","margin-top")
+                              ,("bmargin","margin-bottom")
+                              ]
   let context  =  defField "toc" (writerTableOfContents options) $
                   defField "toc-depth" (show (writerTOCDepth options -
                                               if stBook st
@@ -172,6 +182,13 @@ pandocToSile options (Pandoc meta blocks) = do
                          _        -> id) $
                   -- set lang to something so polyglossia/babel is included
                   defField "lang" (if null docLangs then ""::String else "en") $
+                  defField "colorlinks" (any hasStringValue
+                           ["citecolor", "urlcolor", "linkcolor", "toccolor"]) $
+                  defField "dir" (if (null $ query (extract "dir") blocks)
+                                     then ""::String
+                                     else "ltr") $
+                  defField "section-titles" True $
+                  defField "geometry" geometryFromMargins $
                   metadata
   return $ if writerStandalone options
               then renderTemplate' template context
@@ -229,6 +246,7 @@ isListBlock _                  = False
 
 isLineBreakOrSpace :: Inline -> Bool
 isLineBreakOrSpace LineBreak = True
+isLineBreakOrSpace SoftBreak = True
 isLineBreakOrSpace Space = True
 isLineBreakOrSpace _ = False
 
@@ -247,7 +265,7 @@ blockToSile (Div (identifier,classes,kvs) bs) = do
 blockToSile (Plain lst) =
   inlineListToSile $ dropWhile isLineBreakOrSpace lst
 -- title beginning with fig: indicates that the image is a figure
-blockToSile (Para [Image txt (src,'f':'i':'g':':':tit)]) = do
+blockToSile (Para [Image attr@(ident, _, _) txt (src,'f':'i':'g':':':tit)]) = do
   inNote <- gets stInNote
   modify $ \st -> st{ stInMinipage = True, stNotes = [] }
   capt <- inlineListToSile txt
@@ -257,7 +275,7 @@ blockToSile (Para [Image txt (src,'f':'i':'g':':':tit)]) = do
   captForLof <- if null notes
                    then return empty
                    else brackets <$> inlineListToSile (walk deNote txt)
-  img <- inlineToSile (Image txt (src,tit))
+  img <- inlineToSile (Image attr txt (src,tit))
   let footnotes = notesToSile notes
   return $ if inNote
               -- can't have figures in notes
@@ -599,25 +617,21 @@ isQuoted _ = False
 inlineToSile :: Inline    -- ^ Inline to convert
               -> State WriterState Doc
 inlineToSile (Span (id',classes,kvs) ils) = do
-  let noEmph = "csl-no-emph" `elem` classes
-  let noStrong = "csl-no-strong" `elem` classes
-  let noSmallCaps = "csl-no-smallcaps" `elem` classes
-  let rtl = ("dir","rtl") `elem` kvs
-  let ltr = ("dir","ltr") `elem` kvs
   ref <- toLabel id'
   let linkAnchor = if null id'
                       then empty
                       else "\\protect\\pdf:link" <> braces (text ref) <>
                              braces empty
-  fmap (linkAnchor <>)
-    ((if noEmph then inCmd "textup" else id) .
-     (if noStrong then inCmd "font[weight=400]" else id) .
-     (if noSmallCaps then inCmd "font[weight=400]" else id) .
-     (if rtl then inCmd "RL" else id) .
-     (if ltr then inCmd "LR" else id) .
-     (if not (noEmph || noStrong || noSmallCaps)
-         then braces
-         else id)) `fmap` inlineListToSile ils
+  let cmds = ["textup" | "csl-no-emph" `elem` classes] ++
+              ["textnormal" | "csl-no-strong" `elem` classes ||
+                              "csl-no-smallcaps" `elem` classes] ++
+              ["RL" | ("dir", "rtl") `elem` kvs] ++
+              ["LR" | ("dir", "ltr") `elem` kvs]
+  contents <- inlineListToSile ils
+  return $ linkAnchor <>
+          if null cmds
+              then braces contents
+              else foldr inCmd contents cmds
 inlineToSile (Emph lst) =
   inlineListToSile lst >>= return . inCmd "font[style=italic]"
 inlineToSile (Strong lst) =
@@ -692,12 +706,18 @@ inlineToSile (RawInline f x)
                         = return $ text x
   | otherwise           = return empty
 inlineToSile (LineBreak) = return $ "\\break" <> cr
+inlineToSile SoftBreak = do
+  wrapText <- gets (writerWrapText . stOptions)
+  case wrapText of
+       WrapAuto     -> return space
+       WrapNone     -> return space
+       WrapPreserve -> return cr
 inlineToSile Space = return space
-inlineToSile (Link txt ('#':ident, _)) = do
+inlineToSile (Link _ txt ('#':ident, _)) = do
   contents <- inlineListToSile txt
   lab <- toLabel ident
   return $ text "\\pdf:link" <> braces (text lab) <> braces contents
-inlineToSile (Link txt (src, _)) =
+inlineToSile (Link _ txt (src, _)) =
   case txt of
         [Str x] | escapeURI x == src ->  -- autolink
              do modify $ \s -> s{ stUrl = True }
@@ -714,7 +734,7 @@ inlineToSile (Link txt (src, _)) =
                 src' <- stringToSile URLString (escapeURI src)
                 return $ text ("\\href{" ++ src' ++ "}{") <>
                          contents <> char '}'
-inlineToSile (Image _ (source, _)) = do
+inlineToSile (Image attr _ (source, _)) = do
   modify $ \s -> s{ stGraphics = True }
   let source' = if isURI source
                    then source
@@ -868,3 +888,23 @@ lookKey key (_,_,kvs) =  maybe [] words $ lookup key kvs
 deNote :: Inline -> Inline
 deNote (Note _) = RawInline (Format "sile") ""
 deNote x = x
+
+pDocumentOptions :: P.Parsec String () [String]
+pDocumentOptions = do
+  P.char '['
+  opts <- P.sepBy
+    (P.many $ P.spaces *> P.noneOf (" ,]" :: String) <* P.spaces)
+    (P.char ',')
+  P.char ']'
+  return opts
+
+pDocumentClass :: P.Parsec String () String
+pDocumentClass =
+  do P.skipMany (P.satisfy (/='\\'))
+     P.string "\\documentclass"
+     classOptions <- pDocumentOptions <|> return []
+     if ("article" :: String) `elem` classOptions
+       then return "article"
+       else do P.skipMany (P.satisfy (/='{'))
+               P.char '{'
+               P.manyTill P.letter (P.char '}')
