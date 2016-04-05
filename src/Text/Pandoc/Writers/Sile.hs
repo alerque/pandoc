@@ -71,15 +71,12 @@ data WriterState =
 writeSile :: WriterOptions -> Pandoc -> String
 writeSile options document =
   evalState (pandocToSile options document) $
-  WriterState { stInQuote = False,
-                stInMinipage = False, stInHeading = False,
-                stOLLevel = 1,
-                stOptions = options,
+  WriterState { stInQuote = False, stInHeading = False,
+                stOLLevel = 1, stOptions = options,
                 stTable = False, stStrikeout = False,
                 stUrl = False, stGraphics = False,
                 stLHS = False, stBook = writerChapters options,
-                stHighlighting = False,
-                stInternalLinks = [] }
+                stHighlighting = False, stInternalLinks = [] }
 
 pandocToSile :: WriterOptions -> Pandoc -> State WriterState String
 pandocToSile options (Pandoc meta blocks) = do
@@ -251,6 +248,14 @@ blockToSile (Plain lst) =
 -- title beginning with fig: indicates that the image is a figure
 blockToSile (Para [Image attr@(ident, _, _) txt (src,'f':'i':'g':':':tit)]) = do
   capt <- inlineListToSile txt
+  captForLof <- brackets <$> inlineListToSile txt
+  img <- inlineToSile (Image attr txt (src,tit))
+  lab <- labelFor ident
+  let caption = "\\caption" <> captForLof <> braces capt <> lab
+  figure <- hypertarget ident (cr <>
+            "\\begin{figure}[htbp]" $$ "\\centering" $$ img $$
+            caption $$ "\\end{figure}" <> cr)
+  return $ figure
 blockToSile (Para [Str ".",Space,Str ".",Space,Str "."]) = do
   inlineListToSile [Str ".",Space,Str ".",Space,Str "."]
 blockToSile (Para lst) =
@@ -543,6 +548,22 @@ sectionHeader unnumbered ref level lst = do
   return $ if level' > 5
               then txt
               else headerWith ('\\':sectionType) stuffing
+hypertarget :: String -> Doc -> State WriterState Doc
+hypertarget ident x = do
+  ref <- text `fmap` toLabel ident
+  internalLinks <- gets stInternalLinks
+  return $
+    if ident `elem` internalLinks
+       then text "\\hypertarget"
+              <> braces ref
+              <> braces x
+       else x
+
+labelFor :: String -> State WriterState Doc
+labelFor ""    = return empty
+labelFor ident = do
+  ref <- text `fmap` toLabel ident
+  return $ text "\\label" <> braces ref
 
 -- | Convert list of inline elements to Sile.
 inlineListToSile :: [Inline]  -- ^ Inlines to convert
@@ -639,19 +660,7 @@ inlineToSile (Code (_,classes,_) str) = do
 inlineToSile (Quoted qt lst) = do
   contents <- inlineListToSile lst
   opts <- gets stOptions
-  if csquotes
-     then return $ "\\enquote" <> braces contents
-     else do
-       let s1 = if (not (null lst)) && (isQuoted (head lst))
-                   then "\\,"
-                   else empty
-       let s2 = if (not (null lst)) && (isQuoted (last lst))
-                   then "\\,"
-                   else empty
-       let inner = s1 <> contents <> s2
-       return $ case qt of
-                DoubleQuote -> char '\x201C' <> inner <> char '\x201D'
-                SingleQuote -> char '\x2018' <> inner <> char '\x2019'
+  return $ "\\quote" <> braces contents
 inlineToSile (Str str) = liftM text $ stringToSile TextString str
 inlineToSile (Math InlineMath str) =
   return $ "\\(" <> text str <> "\\)"
@@ -707,11 +716,7 @@ inlineToSile (Note contents) = do
                    _                   -> empty
   let noteContents = nest 2 contents' <> optnl
   opts <- gets stOptions
-  return $
-    if inMinipage
-       then "\\footnotemark{}"
-       -- note: a \n before } needed when note ends with a Verbatim environment
-       else "\\footnote" <> braces noteContents
+  return $ "\\footnote" <> braces noteContents
 
 protectCode :: [Inline] -> [Inline]
 protectCode [] = []
