@@ -52,9 +52,9 @@ $endif$
 $if(rights-meta)$
 \define[command=rights]{$title-rights$}
 $endif$
-\halftitlepage
-\titlepage
-\publicationpage
-\tableofcontents
+%\halftitlepage
+%\titlepage
+%\publicationpage
+%\tableofcontents
 $body$
 \end{document}
