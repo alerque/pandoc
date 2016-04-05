@@ -67,7 +67,6 @@ data WriterState =
               , stGraphics      :: Bool          -- true if document contains images
               , stLHS           :: Bool          -- true if document has literate haskell code
               , stBook          :: Bool          -- true if document uses book class
-              , stCsquotes      :: Bool          -- true if document uses csquotes
               , stHighlighting  :: Bool          -- true if document has highlighted code
               , stInternalLinks :: [String]      -- list of internal link targets
               }
@@ -83,7 +82,7 @@ writeSile options document =
                 stTable = False, stStrikeout = False,
                 stUrl = False, stGraphics = False,
                 stLHS = False, stBook = writerChapters options,
-                stCsquotes = False, stHighlighting = False,
+                stHighlighting = False,
                 stInternalLinks = [] }
 
 pandocToSile :: WriterOptions -> Pandoc -> State WriterState String
@@ -119,15 +118,6 @@ pandocToSile options (Pandoc meta blocks) = do
          Nothing | documentClass `elem` bookClasses
                                         -> modify $ \s -> s{stBook = True}
                  | otherwise               -> return ()
-  -- check for \usepackage...{csquotes}; if present, we'll use
-  -- \enquote{...} for smart quotes:
-  let headerIncludesField :: FromJSON a => Maybe a
-      headerIncludesField = getField "header-includes" metadata
-  let headerIncludes = fromMaybe [] $ mplus
-                       (fmap return headerIncludesField)
-                       headerIncludesField
-  when (any (isInfixOf "{csquotes}") (template : headerIncludes)) $
-    modify $ \s -> s{stCsquotes = True}
   let (blocks'', lastHeader) = if writerCiteMethod options == Citeproc then
                                  (blocks', [])
                                else case last blocks' of
@@ -676,7 +666,6 @@ inlineToSile (Code (_,classes,_) str) = do
              escapeSpaces =  concatMap (\c -> if c == ' ' then "\\ " else [c])
 inlineToSile (Quoted qt lst) = do
   contents <- inlineListToSile lst
-  csquotes <- liftM stCsquotes get
   opts <- gets stOptions
   if csquotes
      then return $ "\\enquote" <> braces contents
