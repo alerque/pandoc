@@ -60,7 +60,6 @@ data WriterState =
               , stNotes         :: [Doc]         -- notes in a minipage
               , stOLLevel       :: Int           -- level of ordered list nesting
               , stOptions       :: WriterOptions -- writer options, so they don't have to be parameter
-              , stVerbInNote    :: Bool          -- true if document has verbatim text in note
               , stTable         :: Bool          -- true if document has a table
               , stStrikeout     :: Bool          -- true if document has strikeout
               , stUrl           :: Bool          -- true if document has visible URL link
@@ -78,7 +77,7 @@ writeSile options document =
   WriterState { stInNote = False, stInQuote = False,
                 stInMinipage = False, stInHeading = False,
                 stNotes = [], stOLLevel = 1,
-                stOptions = options, stVerbInNote = False,
+                stOptions = options,
                 stTable = False, stStrikeout = False,
                 stUrl = False, stGraphics = False,
                 stLHS = False, stBook = writerChapters options,
@@ -151,7 +150,6 @@ pandocToSile options (Pandoc meta blocks) = do
                   defField "documentclass" (if stBook st
                                                then "book"::String
                                                else "plain"::String) $
-                  defField "verbatim-in-note" (stVerbInNote st) $
                   defField "tables" (stTable st) $
                   defField "strikeout" (stStrikeout st) $
                   defField "url" (stUrl st) $
@@ -650,7 +648,6 @@ inlineToSile (Code (_,classes,_) str) = do
        | otherwise                                  -> rawCode
    where listingsCode = do
            inNote <- gets stInNote
-           when inNote $ modify $ \s -> s{ stVerbInNote = True }
            let chr = case "!\"&'()*,-./:;?@_" \\ str of
                           (c:_) -> c
                           []    -> '!'
