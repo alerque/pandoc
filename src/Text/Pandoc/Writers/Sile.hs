@@ -633,9 +633,9 @@ inlineToSile (Span (id',classes,kvs) ils) = do
               then braces contents
               else foldr inCmd contents cmds
 inlineToSile (Emph lst) =
-  inlineListToSile lst >>= return . inCmd "font[style=italic]"
+  inlineListToSile lst >>= return . inCmd "em"
 inlineToSile (Strong lst) =
-  inlineListToSile lst >>= return . inCmd "font[weight=800]"
+  inlineListToSile lst >>= return . inCmd "strong"
 inlineToSile (Strikeout lst) = do
   -- we need to protect VERB in an mbox or we get an error
   -- see #1294
