@@ -53,11 +53,8 @@ import Text.Pandoc.Highlighting (highlight, styleToLaTeX,
                                  toListingsLanguage)
 
 data WriterState =
-  WriterState { stInNote        :: Bool          -- true if we're in a note
-              , stInQuote       :: Bool          -- true if in a blockquote
-              , stInMinipage    :: Bool          -- true if in minipage
+  WriterState { stInQuote       :: Bool          -- true if in a blockquote
               , stInHeading     :: Bool          -- true if in a section heading
-              , stNotes         :: [Doc]         -- notes in a minipage
               , stOLLevel       :: Int           -- level of ordered list nesting
               , stOptions       :: WriterOptions -- writer options, so they don't have to be parameter
               , stTable         :: Bool          -- true if document has a table
@@ -74,9 +71,9 @@ data WriterState =
 writeSile :: WriterOptions -> Pandoc -> String
 writeSile options document =
   evalState (pandocToSile options document) $
-  WriterState { stInNote = False, stInQuote = False,
+  WriterState { stInQuote = False,
                 stInMinipage = False, stInHeading = False,
-                stNotes = [], stOLLevel = 1,
+                stOLLevel = 1,
                 stOptions = options,
                 stTable = False, stStrikeout = False,
                 stUrl = False, stGraphics = False,
@@ -253,24 +250,7 @@ blockToSile (Plain lst) =
   inlineListToSile $ dropWhile isLineBreakOrSpace lst
 -- title beginning with fig: indicates that the image is a figure
 blockToSile (Para [Image attr@(ident, _, _) txt (src,'f':'i':'g':':':tit)]) = do
-  inNote <- gets stInNote
-  modify $ \st -> st{ stInMinipage = True, stNotes = [] }
   capt <- inlineListToSile txt
-  notes <- gets stNotes
-  modify $ \st -> st{ stInMinipage = False, stNotes = [] }
-  -- We can't have footnotes in the list of figures, so remove them:
-  captForLof <- if null notes
-                   then return empty
-                   else brackets <$> inlineListToSile (walk deNote txt)
-  img <- inlineToSile (Image attr txt (src,tit))
-  let footnotes = notesToSile notes
-  return $ if inNote
-              -- can't have figures in notes
-              then "\\begin{center}" $$ img $+$ capt $$ "\\end{center}"
-              else "\\begin{figure}[htbp]" $$ "\\centering" $$ img $$
-                    ("\\caption" <> captForLof <> braces capt) $$
-                    "\\end{figure}" $$
-                    footnotes
 blockToSile (Para [Str ".",Space,Str ".",Space,Str "."]) = do
   inlineListToSile [Str ".",Space,Str ".",Space,Str "."]
 blockToSile (Para lst) =
@@ -478,10 +458,7 @@ tableCellToSile :: Bool -> (Double, Alignment, [Block])
 tableCellToSile _      (0,     _,     blocks) =
   blockListToSile $ walk fixLineBreaks $ walk displayMathToInline blocks
 tableCellToSile header (width, align, blocks) = do
-  modify $ \st -> st{ stInMinipage = True, stNotes = [] }
   cellContents <- blockListToSile blocks
-  notes <- gets stNotes
-  modify $ \st -> st{ stInMinipage = False, stNotes = [] }
   let valign = text $ if header then "[b]" else "[t]"
   let halign = case align of
                AlignLeft    -> "\\raggedright"
@@ -491,8 +468,7 @@ tableCellToSile header (width, align, blocks) = do
   return $ ("\\begin{minipage}" <> valign <>
             braces (text (printf "%.2f\\columnwidth" width)) <>
             (halign <> "\\strut" <> cr <> cellContents <> cr) <>
-            "\\strut\\end{minipage}") $$
-            notesToSile notes
+            "\\strut\\end{minipage}")
 
 notesToSile :: [Doc] -> Doc
 notesToSile [] = empty
@@ -647,7 +623,6 @@ inlineToSile (Code (_,classes,_) str) = do
        | writerHighlight opts && not (null classes) -> highlightCode
        | otherwise                                  -> rawCode
    where listingsCode = do
-           inNote <- gets stInNote
            let chr = case "!\"&'()*,-./:;?@_" \\ str of
                           (c:_) -> c
                           []    -> '!'
@@ -726,16 +701,12 @@ inlineToSile (Image attr _ (source, _)) = do
     (if inHeading then "\\protect\\includegraphics" else "\\includegraphics")
     <> braces (text source'')
 inlineToSile (Note contents) = do
-  inMinipage <- gets stInMinipage
-  modify (\s -> s{stInNote = True})
   contents' <- blockListToSile contents
-  modify (\s -> s {stInNote = False})
   let optnl = case reverse contents of
                    (CodeBlock _ _ : _) -> cr
                    _                   -> empty
   let noteContents = nest 2 contents' <> optnl
   opts <- gets stOptions
-  modify $ \st -> st{ stNotes = noteContents : stNotes st }
   return $
     if inMinipage
        then "\\footnotemark{}"
