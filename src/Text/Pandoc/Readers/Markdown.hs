@@ -56,6 +56,7 @@ import Text.Pandoc.Pretty (charWidth)
 import Text.Pandoc.XML (fromEntities)
 import Text.Pandoc.Parsing hiding (tableWith)
 import Text.Pandoc.Readers.LaTeX ( rawLaTeXInline, rawLaTeXBlock )
+import Text.Pandoc.Readers.Sile ( rawSileInline, rawSileBlock )
 import Text.Pandoc.Readers.HTML ( htmlTag, htmlInBalanced, isInlineTag, isBlockTag,
                                   isTextTag, isCommentTag )
 import Control.Monad
@@ -494,6 +495,7 @@ block = do
                , codeBlockIndented
                , guardEnabled Ext_latex_macros *> (macro >>= return . return)
                , rawTeXBlock
+               , rawSileBlock
                , lineBlock
                , blockQuote
                , hrule
@@ -1379,7 +1381,7 @@ pipeTableRow = try $ do
   skipMany spaceChar
   openPipe <- (True <$ char '|') <|> return False
   -- split into cells
-  let chunk = void (code <|> rawHtmlInline <|> escapedChar <|> rawLaTeXInline')
+  let chunk = void (code <|> rawHtmlInline <|> escapedChar <|> rawLaTeXInline' <|> rawSileInline')
        <|> void (noneOf "|\n\r")
   let cellContents = ((trim . snd) <$> withRaw (many chunk)) >>=
         parseFromString pipeTableCell
@@ -1490,6 +1492,7 @@ inline = choice [ whitespace
                 , rawHtmlInline
                 , escapedChar
                 , rawLaTeXInline'
+                , rawSileInline'
                 , exampleRef
                 , smart
                 , return . B.singleton <$> charRef
@@ -1856,6 +1859,13 @@ rawLaTeXInline' = try $ do
   RawInline _ s <- rawLaTeXInline
   return $ return $ B.rawInline "tex" s
   -- "tex" because it might be context or latex
+
+rawSileInline' :: MarkdownParser (F Inlines)
+rawSileInline' = try $ do
+  guardEnabled Ext_raw_sile
+  lookAhead $ char '\\' >> notFollowedBy' (string "start") -- context env
+  RawInline _ s <- rawSileInline
+  return $ return $ B.rawInline "sile" s
 
 rawConTeXtEnvironment :: Parser [Char] st String
 rawConTeXtEnvironment = try $ do
