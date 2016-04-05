@@ -993,7 +993,7 @@ inlineToMarkdown opts (RawInline f str) = do
   if not plain &&
      ( f == "markdown" ||
        (isEnabled Ext_raw_tex opts && (f == "latex" || f == "tex" )) ||
-       (isEnabled Ext_raw_sil opts && (f == "sile" || f == "sil" )) ||
+       (isEnabled Ext_raw_sile opts && (f == "sile" || f == "sil" )) ||
        (isEnabled Ext_raw_html opts && f == "html") )
     then return $ text str
     else return empty
