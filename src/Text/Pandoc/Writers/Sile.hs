@@ -262,6 +262,14 @@ blockToSile (BlockQuote lst) = do
 blockToSile (CodeBlock (identifier,classes,keyvalAttr) str) = do
   opts <- gets stOptions
   ref <- toLabel identifier
+
+  let params = (if identifier == ""
+                  then []
+                  else [ "id=" ++ ref ])
+      sileParams
+          | null params = empty
+          | otherwise = brackets $ hcat ( intersperse ", " (map text params))
+
   let linkAnchor = if null identifier
                       then empty
                       else "\\pdf:link" <> brackets (text ref) <> braces (text ref)
@@ -272,9 +280,12 @@ blockToSile (CodeBlock (identifier,classes,keyvalAttr) str) = do
   let rawCodeBlock = do
         st <- get
         env <- do return "verbatim"
-        return $ flush (linkAnchor $$ text ("\\begin{" ++ env ++ "}") $$
-                 text str $$
-                 text ("\\end{" ++ env ++ "}")) <> cr
+        return $ flush (linkAnchor $$
+                        text "\\begin" <> sileParams <> braces env $$
+                        text str $$
+                        text "\\end" <> braces env) <> cr
+
+{-
   let listingsCodeBlock = do
         st <- get
         let params = if writerListings (stOptions st)
@@ -302,12 +313,11 @@ blockToSile (CodeBlock (identifier,classes,keyvalAttr) str) = do
         case highlight formatLaTeXBlock ("",classes,keyvalAttr) str of
                Nothing -> rawCodeBlock
                Just  h -> modify (\st -> st{ stHighlighting = True }) >>
-                          return (flush $ linkAnchor $$ text h)
+                          return (flush $ linkAnchor $$ text h) -}
+
   case () of
      _ | isEnabled Ext_literate_haskell opts && "haskell" `elem` classes &&
          "literate" `elem` classes                      -> lhsCodeBlock
-       | writerListings opts                            -> listingsCodeBlock
-       | writerHighlight opts && not (null classes)     -> highlightedCodeBlock
        | otherwise                                      -> rawCodeBlock
 blockToSile (RawBlock f x)
   | f == Format "sile" || f == Format "sil"
