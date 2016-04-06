@@ -495,7 +495,6 @@ block = do
                , codeBlockIndented
                , guardEnabled Ext_latex_macros *> (macro >>= return . return)
                , rawTeXBlock
-               , rawSileBlock
                , lineBlock
                , blockQuote
                , hrule
