@@ -262,15 +262,20 @@ blockToSile (BlockQuote lst) = do
 blockToSile (CodeBlock (identifier,classes,keyvalAttr) str) = do
   opts <- gets stOptions
   ref <- toLabel identifier
+  let classes' = [ val | (val) <- classes ]
+  let classes'' = intercalate ", " classes'
   let params = (if identifier == ""
                   then []
                   else [ "id=" ++ ref ]) ++
                (if null classes
                   then []
-                  else [ "classes=" ])
+                  else [ "classes={" ++ classes'' ++ "}" ] ) ++
+                (if null keyvalAttr
+                  then []
+                  else [ key ++ "=" ++ attr | (key, attr) <- keyvalAttr ])
       sileParams
           | null params = empty
-          | otherwise = brackets $ hcat ( intersperse ", " (map text params))
+          | otherwise = brackets $ hcat (intersperse ", " (map text params))
   let linkAnchor = if null identifier
                       then empty
                       else "\\pdf:link" <> brackets (text ref) <> braces (text ref)
