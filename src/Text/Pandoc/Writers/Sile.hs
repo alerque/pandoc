@@ -48,9 +48,6 @@ import Control.Monad.State
 import qualified Text.Parsec as P
 import Text.Pandoc.Pretty
 import Text.Pandoc.ImageSize
-import Text.Pandoc.Highlighting (highlight, styleToLaTeX,
-                                 formatLaTeXInline, formatLaTeXBlock,
-                                 toListingsLanguage)
 
 data WriterState =
   WriterState { stInQuote       :: Bool          -- true if in a blockquote
@@ -152,10 +149,6 @@ pandocToSile options (Pandoc meta blocks) = do
                   defField "graphics" (stGraphics st) $
                   defField "book-class" (stBook st) $
                   defField "listings" (writerListings options || stLHS st) $
-                  (if stHighlighting st
-                      then defField "highlighting-macros" (styleToLaTeX
-                                $ writerHighlightStyle options )
-                      else id) $
                   (case writerCiteMethod options of
                          Natbib   -> defField "biblio-title" biblioTitle .
                                      defField "natbib" True
@@ -290,36 +283,6 @@ blockToSile (CodeBlock (identifier,classes,keyvalAttr) str) = do
                         text "\\begin" <> sileParams <> braces env $$
                         text str $$
                         text "\\end" <> braces env) <> cr
-
-{-
-  let listingsCodeBlock = do
-        st <- get
-        let params = if writerListings (stOptions st)
-                     then (case getListingsLanguage classes of
-                                Just l  -> [ "language=" ++ l ]
-                                Nothing -> []) ++
-                          [ "numbers=left" | "numberLines" `elem` classes
-                             || "number" `elem` classes
-                             || "number-lines" `elem` classes ] ++
-                          [ (if key == "startFrom"
-                                then "firstnumber"
-                                else key) ++ "=" ++ attr |
-                                (key,attr) <- keyvalAttr ] ++
-                          (if identifier == ""
-                                then []
-                                else [ "label=" ++ ref ])
-
-                     else []
-            printParams
-                | null params = empty
-                | otherwise   = brackets $ hcat (intersperse ", " (map text params))
-        return $ flush ("\\begin{lstlisting}" <> printParams $$ text str $$
-                 "\\end{lstlisting}") $$ cr
-  let highlightedCodeBlock =
-        case highlight formatLaTeXBlock ("",classes,keyvalAttr) str of
-               Nothing -> rawCodeBlock
-               Just  h -> modify (\st -> st{ stHighlighting = True }) >>
-                          return (flush $ linkAnchor $$ text h) -}
 
   case () of
      _ | isEnabled Ext_literate_haskell opts && "haskell" `elem` classes &&
@@ -642,21 +605,8 @@ inlineToSile (Cite cits lst) = do
 inlineToSile (Code (_,classes,_) str) = do
   opts <- gets stOptions
   inHeading <- gets stInHeading
-  case () of
-     _ | writerListings opts  && not inHeading      -> listingsCode
-       | writerHighlight opts && not (null classes) -> highlightCode
-       | otherwise                                  -> rawCode
-   where listingsCode = do
-           let chr = case "!\"&'()*,-./:;?@_" \\ str of
-                          (c:_) -> c
-                          []    -> '!'
-           return $ text $ "\\lstinline" ++ [chr] ++ str ++ [chr]
-         highlightCode = do
-           case highlight formatLaTeXInline ("",classes,[]) str of
-                  Nothing -> rawCode
-                  Just  h -> modify (\st -> st{ stHighlighting = True }) >>
-                             return (text h)
-         rawCode = liftM (text . (\s -> "\\texttt{" ++ escapeSpaces s ++ "}"))
+  rawCode
+    where rawCode = liftM (text . (\s -> "\\texttt{" ++ escapeSpaces s ++ "}"))
                           $ stringToSile CodeString str
            where
              escapeSpaces =  concatMap (\c -> if c == ' ' then "\\ " else [c])
@@ -821,11 +771,6 @@ citationsToBiblatex (c:cs) = do
               = citeArguments p s k
 
 citationsToBiblatex _ = return empty
-
--- Determine listings language from list of class attributes.
-getListingsLanguage :: [String] -> Maybe String
-getListingsLanguage [] = Nothing
-getListingsLanguage (x:xs) = toListingsLanguage x <|> getListingsLanguage xs
 
 -- Extract a key from divs and spans
 extract :: String -> Block -> [String]
