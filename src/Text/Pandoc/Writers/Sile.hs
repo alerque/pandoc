@@ -207,10 +207,6 @@ stringToSile  ctx (x:xs) = do
            | otherwise -> "\\\\" ++ rest
        _        -> x : rest
 
---sileBlock :: String -> String -> String
---sileBlock e []
---cmd <- sileBlock env options content
-
 toLabel :: String -> State WriterState String
 toLabel z = go `fmap` stringToSile URLString z
  where go [] = ""
@@ -267,15 +263,13 @@ blockToSile (CodeBlock (identifier,classes,keyvalAttr) str) = do
   opts <- gets stOptions
   ref <- toLabel identifier
 
-  let params = if identifier == ""
+  let params = (if identifier == ""
                   then []
-                  else [ "id=" ++ ref ]
-
+                  else [ "id=" ++ ref ])
       sileParams
           | null params = empty
           | otherwise = brackets $ hcat ( intersperse ", " (map text params))
 
-  --cmd <- sileBlock env options content
   let linkAnchor = if null identifier
                       then empty
                       else "\\pdf:link" <> brackets (text ref) <> braces (text ref)
