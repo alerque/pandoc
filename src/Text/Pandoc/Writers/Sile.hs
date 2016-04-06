@@ -219,13 +219,6 @@ toLabel z = go `fmap` stringToSile URLString z
 inCmd :: String -> Doc -> Doc
 inCmd cmd contents = char '\\' <> text cmd <> braces contents
 
-
-isListBlock :: Block -> Bool
-isListBlock (BulletList _)     = True
-isListBlock (OrderedList _ _)  = True
-isListBlock (DefinitionList _) = True
-isListBlock _                  = False
-
 isLineBreakOrSpace :: Inline -> Bool
 isLineBreakOrSpace LineBreak = True
 isLineBreakOrSpace SoftBreak = True
@@ -280,7 +273,7 @@ blockToSile (CodeBlock (identifier,classes,keyvalAttr) str) = do
         st <- get
         env <- do return "verbatim"
         return $ flush (linkAnchor $$ text ("\\begin{" ++ env ++ "}") $$
-                --text str $$ -- TODO: escape braces?
+                 text str $$
                  text ("\\end{" ++ env ++ "}")) <> cr
   let listingsCodeBlock = do
         st <- get
@@ -519,8 +512,6 @@ sectionHeader unnumbered ref level lst = do
   plain <- stringToSile TextString $ foldl (++) "" $ map stringify lst
   let noNote (Note _) = Str ""
       noNote x        = x
-  let lstNoNotes = walk noNote lst
-  txtNoNotes <- inlineListToSile lstNoNotes
   let options = if unnumbered then "numbering=false" else empty
   let stuffing = brackets options <> braces txt
   book <- gets stBook
@@ -589,10 +580,6 @@ inlineListToSile lst =
                                ("\\\\[" ++ show (length lbs) ++
                                 "\\baselineskip]") : fixBreaks rest
        fixBreaks (y:ys) = y : fixBreaks ys
-
-isQuoted :: Inline -> Bool
-isQuoted (Quoted _ _) = True
-isQuoted _ = False
 
 -- | Convert inline element to Sile
 inlineToSile :: Inline    -- ^ Inline to convert
@@ -715,7 +702,6 @@ inlineToSile (Note contents) = do
                    (CodeBlock _ _ : _) -> cr
                    _                   -> empty
   let noteContents = nest 2 contents' <> optnl
-  opts <- gets stOptions
   return $ "\\footnote" <> braces noteContents
 
 protectCode :: [Inline] -> [Inline]
@@ -841,10 +827,6 @@ extractInline _ _               = []
 -- Look up a key in an attribute and give a list of its values
 lookKey :: String -> Attr -> [String]
 lookKey key (_,_,kvs) =  maybe [] words $ lookup key kvs
-
-deNote :: Inline -> Inline
-deNote (Note _) = RawInline (Format "sile") ""
-deNote x = x
 
 pDocumentOptions :: P.Parsec String () [String]
 pDocumentOptions = do
