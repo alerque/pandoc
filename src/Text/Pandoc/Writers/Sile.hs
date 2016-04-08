@@ -534,7 +534,8 @@ labelFor :: String -> State WriterState Doc
 labelFor ""    = return empty
 labelFor ident = do
   ref <- text `fmap` toLabel ident
-  return $ text "\\label" <> braces ref
+  let ref' = "label=" <> ref
+  return $ text "\\label" <> braces ref'
 
 -- | Convert list of inline elements to Sile.
 inlineListToSile :: [Inline]  -- ^ Inlines to convert
