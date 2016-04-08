@@ -13,8 +13,7 @@ $for(script)$
 $endfor$
 $if(links-as-notes)$
 \begin{script}
-SILE.registerCommand("href", function(content)
-  --SILE.process(content)
+SILE.registerCommand("href", function(options, content)
   SILE.call("url", {}, content)
   SILE.call("footnote", {}, content)
 end)
@@ -57,4 +56,10 @@ $endif$
 %\publicationpage
 %\tableofcontents
 $body$
+$for(include-after)$
+$include-after$
+% TODO: bibtex
+\include[src=$include-after$]
+
+$endfor$
 \end{document}
