@@ -552,7 +552,7 @@ inlineListToSile lst =
        fixLineInitialSpaces (x:xs) = x : fixLineInitialSpaces xs
        fixNbsps s = let (ys,zs) = span (=='\160') s
                     in  replicate (length ys) hspace ++ [Str zs]
-       hspace = RawInline "sile" "\\hspace*{0.333em}"
+       hspace = RawInline "sile" "\\glue[width=1spc]"
        -- linebreaks after blank lines cause problems:
        fixBreaks [] = []
        fixBreaks ys@(LineBreak : LineBreak : _) =
