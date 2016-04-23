@@ -295,11 +295,9 @@ blockToSile (RawBlock f x)
 blockToSile (BulletList []) = return empty  -- otherwise latex error
 blockToSile (BulletList lst) = do
   items <- mapM listItemToSile lst
-  let spacing = if isTightList lst
-                   then text "\\tightlist"
-                   else empty
-  return $ text ("\\begin{listarea}") $$ spacing $$ vcat items $$
-             "\\end{listarea}"
+  return $ text ("\\begin{listarea}")
+         $$ vcat items
+         $$ "\\end{listarea}"
 blockToSile (OrderedList _ []) = return empty -- otherwise latex error
 blockToSile (OrderedList (start, numstyle, numdelim) lst) = do
   st <- get
@@ -307,37 +305,9 @@ blockToSile (OrderedList (start, numstyle, numdelim) lst) = do
   put $ st {stOLLevel = oldlevel + 1}
   items <- mapM listItemToSile lst
   modify (\s -> s {stOLLevel = oldlevel})
-  let tostyle x = case numstyle of
-                       Decimal      -> "\\arabic" <> braces x
-                       UpperRoman   -> "\\Roman" <> braces x
-                       LowerRoman   -> "\\roman" <> braces x
-                       UpperAlpha   -> "\\Alph" <> braces x
-                       LowerAlpha   -> "\\alph" <> braces x
-                       Example      -> "\\arabic" <> braces x
-                       DefaultStyle -> "\\arabic" <> braces x
-  let todelim x = case numdelim of
-                       OneParen    -> x <> ")"
-                       TwoParens   -> parens x
-                       Period      -> x <> "."
-                       _           -> x <> "."
-  let enum = text $ "enum" ++ map toLower (toRomanNumeral oldlevel)
-  let stylecommand = if numstyle == DefaultStyle && numdelim == DefaultDelim
-                        then empty
-                        else "\\def" <> "\\label" <> enum <>
-                              braces (todelim $ tostyle enum)
-  let resetcounter = if start == 1 || oldlevel > 4
-                        then empty
-                        else "\\setcounter" <> braces enum <>
-                              braces (text $ show $ start - 1)
-  let spacing = if isTightList lst
-                   then text "\\tightlist"
-                   else empty
-  return $ text ("\\begin{enumerate}")
-         $$ stylecommand
-         $$ resetcounter
-         $$ spacing
+  return $ text ("\\begin{listarea}")
          $$ vcat items
-         $$ "\\end{enumerate}"
+         $$ "\\end{listarea}"
 blockToSile (DefinitionList []) = return empty
 blockToSile (DefinitionList lst) = do
   items <- mapM defListItemToSile lst
@@ -461,13 +431,8 @@ notesToSile ns = (case length ns of
                      $ reverse ns)
 
 listItemToSile :: [Block] -> State WriterState Doc
-listItemToSile lst
-  -- we need to put some text before a header if it's the first
-  -- element in an item. This will look ugly in Sile regardless, but
-  -- this will keep the typesetter from throwing an error.
-  | ((Header _ _ _) :_) <- lst =
-    blockListToSile lst >>= return . (inCmd "listitem")
-  | otherwise = blockListToSile lst >>= return .  (inCmd "listitem")
+listItemToSile lst = do
+  blockListToSile lst >>= return . (inCmd "listitem")
 
 defListItemToSile :: ([Inline], [[Block]]) -> State WriterState Doc
 defListItemToSile (term, defs) = do
