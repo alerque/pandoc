@@ -238,9 +238,7 @@ blockToSile (Para [Image attr@(ident, _, _) txt (src,'f':'i':'g':':':tit)]) = do
   img <- inlineToSile (Image attr txt (src,tit))
   lab <- labelFor ident
   let caption = "\\caption" <> captForLof <> braces capt <> lab
-  figure <- hypertarget ident (cr <>
-            "\\begin{figure}[htbp]" $$ "\\centering" $$ img $$
-            caption $$ "\\end{figure}" <> cr)
+  figure <- hypertarget ident img
   return $ figure
 blockToSile (Para [Str ".",Space,Str ".",Space,Str "."]) = do
   inlineListToSile [Str ".",Space,Str ".",Space,Str "."]
@@ -623,14 +621,9 @@ inlineToSile (Link _ txt (src, _)) =
                          contents <> char '}'
 inlineToSile (Image attr _ (source, _)) = do
   modify $ \s -> s{ stGraphics = True }
-  let source' = if isURI source
-                   then source
-                   else unEscapeString source
-  source'' <- stringToSile URLString (escapeURI source')
+  source' <- stringToSile URLString (escapeURI source)
   inHeading <- gets stInHeading
-  return $
-    (if inHeading then "\\protect\\includegraphics" else "\\includegraphics")
-    <> braces (text source'')
+  return $ "\\img" <> brackets ("src=" <> text source')
 inlineToSile (Note contents) = do
   contents' <- blockListToSile contents
   let optnl = case reverse contents of
