@@ -26,8 +26,12 @@ SILE.registerCommand("tt", function(options, content)
 end)
 $if(links-as-notes)$
 SILE.registerCommand("href", function(options, content)
-  SILE.call("url", {}, content)
-  SILE.call("footnote", {}, content)
+  SILE.call("url", options, content)
+  SILE.call("footnote", options, content)
+end)
+$else$
+SILE.registerCommand("href", function(options, content)
+  SILE.call("url", options, content)
 end)
 $endif$
 \end{script}
