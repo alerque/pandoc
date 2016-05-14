@@ -19,6 +19,9 @@ $endif$
 SILE.registerCommand("label", function(options, content)
   SILE.call("pdf:bookmark", options, content)
 end)
+SILE.registerCommand("tt", function(options, content)
+  SILE.call("verbatim:font", options, content)
+end)
 $if(links-as-notes)$
 SILE.registerCommand("href", function(options, content)
   SILE.call("url", {}, content)
