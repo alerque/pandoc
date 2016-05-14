@@ -465,8 +465,8 @@ sectionHeader unnumbered ref level lst = do
   let lab' = "dest=" <> lab <> ",title=" <> txt
   let refLabel x = (if ref `elem` internalLinks
                        then text "\\pdf:link"
-                                <> brackets x
-                                <> braces lab
+                                <> brackets lab'
+                                <> braces x
                        else x)
   let headerWith x y = refLabel $ text x <> y <>
                              if null ref
@@ -602,7 +602,7 @@ inlineToSile Space = return space
 inlineToSile (Link _ txt ('#':ident, _)) = do
   contents <- inlineListToSile txt
   lab <- toLabel ident
-  return $ text "\\pdf:link" <> brackets contents <> braces (text lab)
+  return $ text "\\pdf:link" <> brackets ("dest=" <> text lab) <> braces contents
 inlineToSile (Link _ txt (src, _)) =
   case txt of
         [Str x] | escapeURI x == src ->  -- autolink
