@@ -3,6 +3,15 @@ $if(lang)$
 \language[main=$language$]
 \font[language=$language$]
 $endif$
+$if(langscript)$
+\font[script=$langscript$]
+$endif$
+$if(mainfont)$
+\font[family=$mainfont$]
+$endif$
+$if(fontsize)$
+\font[size=$fontsize$]
+$endif$
 \script[src=packages/url]
 \script[src=packages/pdf]
 \script[src=packages/footnotes]
@@ -25,15 +34,6 @@ $for(script)$
 \script[src=$script$]
 
 $endfor$
-$if(langscript)$
-\font[script=$langscript$]
-$endif$
-$if(mainfont)$
-\font[family=$mainfont$]
-$endif$
-$if(fontsize)$
-\font[size=$fontsize$]
-$endif$
 \set[parameter=linebreak.emergencyStretch,value=1em]
 $if(sansfont)$
 \define[command=book:chapterfont]{\font[family=$sansfont$,weight=800,size=20pt]{\process}}
