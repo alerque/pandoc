@@ -1,6 +1,7 @@
 \begin[$if(papersize)$papersize=$papersize$,$endif$class=$documentclass$]{document}
-$if(language)$
+$if(lang)$
 \language[main=$language$]
+\font[language=$language$]
 $endif$
 \script[src=packages/url]
 \script[src=packages/pdf]
@@ -18,9 +19,6 @@ SILE.registerCommand("href", function(options, content)
   SILE.call("footnote", {}, content)
 end)
 \end{script}
-$endif$
-$if(language)$
-\font[language=$language$]
 $endif$
 $if(langscript)$
 \font[script=$langscript$]
