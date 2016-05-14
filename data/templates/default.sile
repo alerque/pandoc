@@ -14,6 +14,7 @@ $if(fontsize)$
 $endif$
 \script[src=packages/url]
 \script[src=packages/pdf]
+\script[src=packages/image]
 \script[src=packages/footnotes]
 \script[src=packages/rules]
 \define[command=listarea]{\set[parameter=document.rskip,value=10pt]\set[parameter=document.lskip,value=20pt]\process\set[parameter=document.lskip]\set[parameter=document.rskip]\noindent}%
