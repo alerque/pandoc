@@ -253,6 +253,7 @@ blockToSile (BlockQuote lst) = do
 blockToSile (CodeBlock (identifier,classes,keyvalAttr) str) = do
   opts <- gets stOptions
   ref <- toLabel identifier
+  str' <- stringToSile CodeString str
   let classes' = [ val | (val) <- classes ]
   let classes'' = intercalate ", " classes'
   let params = (if identifier == ""
@@ -279,7 +280,7 @@ blockToSile (CodeBlock (identifier,classes,keyvalAttr) str) = do
         env <- do return "verbatim"
         return $ flush (linkAnchor $$
                         text "\\begin" <> sileParams <> braces env $$
-                        text str $$
+                        text str' $$
                         text "\\end" <> braces env) <> cr
 
   case () of
