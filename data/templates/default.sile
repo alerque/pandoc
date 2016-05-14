@@ -6,12 +6,6 @@ $endif$
 \script[src=packages/url]
 \script[src=packages/pdf]
 \script[src=packages/footnotes]
-$for(include)$
-\include[src=$include$]
-$endfor$
-$for(script)$
-\script[src=$script$]
-$endfor$
 \begin{script}
 SILE.registerCommand("label", function()
   -- ignore labels
@@ -23,6 +17,14 @@ SILE.registerCommand("href", function(options, content)
 end)
 $endif$
 \end{script}
+$for(include)$
+\include[src=$include$]
+
+$endfor$
+$for(script)$
+\script[src=$script$]
+
+$endfor$
 $if(langscript)$
 \font[script=$langscript$]
 $endif$
