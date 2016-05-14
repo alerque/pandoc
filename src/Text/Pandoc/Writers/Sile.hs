@@ -312,10 +312,11 @@ blockToSile (DefinitionList []) = return empty
 blockToSile (DefinitionList lst) = do
   items <- mapM defListItemToSile lst
   let spacing = if all isTightList (map snd lst)
-                   then text "\\tightlist"
-                   else empty
-  return $ text ("\\begin{description}") $$ spacing $$ vcat items $$
-               "\\end{description}"
+                   then text "tight=true"
+                   else text "tight=false"
+  return $ "\\begin" <> brackets spacing <> braces "listarea"
+         $$ vcat items
+         $$ "\\end" <> braces "listarea"
 blockToSile HorizontalRule = return $
   "\\begin{center}\\rule{0.5\\linewidth}{\\linethickness}\\end{center}"
 blockToSile (Header level (id',classes,_) lst) = do
