@@ -462,7 +462,7 @@ sectionHeader unnumbered ref level lst = do
   opts <- gets stOptions
   let level' = if book || writerChapters opts then level - 1 else level
   internalLinks <- gets stInternalLinks
-  let lab' = "label=" <> lab
+  let lab' = "dest=" <> lab <> ",title=" <> txt
   let refLabel x = (if ref `elem` internalLinks
                        then text "\\pdf:link"
                                 <> brackets x
