@@ -574,7 +574,7 @@ inlineToSile (Code (_,classes,_) str) = do
   opts <- gets stOptions
   inHeading <- gets stInHeading
   rawCode
-    where rawCode = liftM (text . (\s -> "\\texttt{" ++ escapeSpaces s ++ "}"))
+    where rawCode = liftM (text . (\s -> "\\tt{" ++ escapeSpaces s ++ "}"))
                           $ stringToSile CodeString str
            where
              escapeSpaces =  concatMap (\c -> if c == ' ' then "\\ " else [c])
