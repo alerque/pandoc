@@ -12,14 +12,17 @@ $endfor$
 $for(script)$
 \script[src=$script$]
 $endfor$
-$if(links-as-notes)$
 \begin{script}
+SILE.registerCommand("label", function()
+  -- ignore labels
+end)
+$if(links-as-notes)$
 SILE.registerCommand("href", function(options, content)
   SILE.call("url", {}, content)
   SILE.call("footnote", {}, content)
 end)
-\end{script}
 $endif$
+\end{script}
 $if(langscript)$
 \font[script=$langscript$]
 $endif$
