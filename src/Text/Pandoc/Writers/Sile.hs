@@ -468,10 +468,7 @@ sectionHeader unnumbered ref level lst = do
                                 <> brackets lab'
                                 <> braces x
                        else x)
-  let headerWith x y = refLabel $ text x <> y <>
-                             if null ref
-                                then empty
-                                else text "\\label" <> brackets lab'
+  let headerWith x y = refLabel $ text x <> y
   let sectionType = case level' of
                           0  -> "chapter"
                           1  -> "section"
@@ -497,10 +494,6 @@ hypertarget ident x = do
 
 labelFor :: String -> State WriterState Doc
 labelFor ""    = return empty
-labelFor ident = do
-  ref <- text `fmap` toLabel ident
-  let ref' = "label=" <> ref
-  return $ text "\\label" <> braces ref'
 
 -- | Convert list of inline elements to Sile.
 inlineListToSile :: [Inline]  -- ^ Inlines to convert
