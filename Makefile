@@ -10,6 +10,11 @@ GHCOPTS=-fdiagnostics-color=always
 # -Wredundant-constraints (problematic if we want to support older base)
 WEBSITE=../../web/pandoc.org
 
+sile_install: deps
+	sudo chown caleb:caleb . -R
+	cabal build
+	sudo cabal install --prefix=/usr/local
+
 quick:
 	stack install --ghc-options='$(GHCOPTS)' --install-ghc --flag 'pandoc:embed_data_files' --fast --test --test-arguments='-j4 --hide-successes $(TESTARGS)'
 
