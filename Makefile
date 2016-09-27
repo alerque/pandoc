@@ -1,7 +1,7 @@
 version=$(shell grep '^Version:' pandoc.cabal | awk '{print $$2;}')
 pandoc=$(shell find dist -name pandoc -type f -exec ls -t {} \; | head -1)
 
-sile_install:
+sile_install: deps
 	sudo chown caleb:caleb . -R
 	cabal build
 	sudo cabal install --prefix=/usr/local
