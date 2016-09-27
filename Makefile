@@ -5,6 +5,11 @@ BRANCH?=master
 RESOLVER=nightly-2017-10-22
 GHCOPTS=-fdiagnostics-color=always -Wall -fno-warn-unused-do-bind -Wincomplete-record-updates -Wnoncanonical-monad-instances -Wnoncanonical-monadfail-instances
 
+sile_install: deps
+	sudo chown caleb:caleb . -R
+	cabal build
+	sudo cabal install --prefix=/usr/local
+
 quick:
 	stack install --resolver=$(RESOLVER) --ghc-options='$(GHCOPTS)' --install-ghc --flag 'pandoc:embed_data_files' --fast --test --test-arguments='-j4 --hide-successes $(TESTARGS)'
 
