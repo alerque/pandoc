@@ -245,6 +245,8 @@ blockToSile (Para [Str ".",Space,Str ".",Space,Str "."]) = do
   inlineListToSile [Str ".",Space,Str ".",Space,Str "."]
 blockToSile (Para lst) =
   inlineListToSile $ dropWhile isLineBreakOrSpace lst
+blockToSile (LineBlock lns) = do
+  blockToSile $ linesToPara lns
 blockToSile (BlockQuote lst) = do
   oldInQuote <- gets stInQuote
   modify (\s -> s{stInQuote = True})
