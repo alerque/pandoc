@@ -72,7 +72,8 @@ writeSile options document =
                 stOLLevel = 1, stOptions = options,
                 stTable = False, stStrikeout = False,
                 stUrl = False, stGraphics = False,
-                stLHS = False, stBook = writerChapters options,
+                stLHS = False,
+                stBook = writerTopLevelDivision options < Section,
                 stHighlighting = False, stInternalLinks = [] }
 
 pandocToSile :: WriterOptions -> Pandoc -> State WriterState String
@@ -460,7 +461,12 @@ sectionHeader unnumbered ref level lst = do
   let stuffing = brackets options <> braces txt
   book <- gets stBook
   opts <- gets stOptions
-  let level' = if book || writerChapters opts then level - 1 else level
+  let topLevelDivision = min (if book then Chapter else Section)
+                             (writerTopLevelDivision opts)
+  let level' = case topLevelDivision of
+                 Part    -> level - 2
+                 Chapter -> level - 1
+                 Section -> level
   internalLinks <- gets stInternalLinks
   let lab' = "dest=" <> lab <> ",title=" <> txt
   let refLabel x = (if ref `elem` internalLinks
