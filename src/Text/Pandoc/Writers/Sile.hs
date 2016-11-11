@@ -38,16 +38,14 @@ import Text.Pandoc.Options
 import Text.Pandoc.Templates
 import Text.Printf ( printf )
 import Network.URI ( isURI, unEscapeString )
-import Data.Aeson (object, (.=), FromJSON)
-import Data.List ( (\\), isInfixOf, stripPrefix, intercalate, intersperse, nub, nubBy )
-import Data.Char ( toLower, isPunctuation, isAscii, isLetter, isDigit, ord )
-import Data.Maybe ( fromMaybe, isJust, catMaybes )
-import qualified Data.Text as T
+import Data.List ( stripPrefix, intercalate, intersperse, nub )
+import Data.Char ( isPunctuation, isAscii, isLetter, isDigit, ord )
+import Data.Maybe ( isJust, catMaybes )
 import Control.Applicative ((<|>))
 import Control.Monad.State
 import qualified Text.Parsec as P
 import Text.Pandoc.Pretty
-import Text.Pandoc.ImageSize
+import Text.Pandoc.ImageSize()
 
 data WriterState =
   WriterState { stInQuote       :: Bool          -- true if in a blockquote
@@ -189,7 +187,6 @@ data StringContext = TextString
 stringToSile :: StringContext -> String -> State WriterState String
 stringToSile  _     []     = return ""
 stringToSile  ctx (x:xs) = do
-  opts <- gets stOptions
   rest <- stringToSile ctx xs
   let isUrl = ctx == URLString
   return $
@@ -622,7 +619,9 @@ inlineToSile (Link _ txt (src, _)) =
                          contents <> char '}'
 inlineToSile (Image attr _ (source, _)) = do
   modify $ \s -> s{ stGraphics = True }
-  source' <- stringToSile URLString (escapeURI source)
+  let source' = if isURI source
+                   then source
+                   else unEscapeString source
   inHeading <- gets stInHeading
   return $ "\\img" <> brackets ("src=" <> text source')
 inlineToSile (Note contents) = do
