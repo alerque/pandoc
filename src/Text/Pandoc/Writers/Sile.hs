@@ -304,7 +304,15 @@ blockToSile (OrderedList (start, numstyle, numdelim) lst) = do
   put $ st {stOLLevel = oldlevel + 1}
   items <- mapM listItemToSile lst
   modify (\s -> s {stOLLevel = oldlevel})
-  return $ text ("\\begin{listarea}")
+  let tostyle = "numberstyle=" ++ case numstyle of
+                       Decimal      -> "arabic"
+                       UpperRoman   -> "Roman"
+                       LowerRoman   -> "roman"
+                       UpperAlpha   -> "Alpha"
+                       LowerAlpha   -> "alpha"
+                       Example      -> "arabic"
+                       DefaultStyle -> "arabic"
+  return $ text ("\\begin[" ++ tostyle ++ "]{listarea}")
          $$ vcat items
          $$ "\\end{listarea}"
 blockToSile (DefinitionList []) = return empty
