@@ -471,9 +471,9 @@ sectionHeader unnumbered ref level lst = do
   let topLevelDivision = min (if book then Chapter else Section)
                              (writerTopLevelDivision opts)
   let level' = case topLevelDivision of
-                 Part    -> level - 2
-                 Chapter -> level - 1
-                 Section -> level
+                 Part    -> level - 3
+                 Chapter -> level - 2
+                 Section -> level - 1
   internalLinks <- gets stInternalLinks
   let lab' = "dest=" <> lab <> ",title=" <> txt
   let refLabel x = (if ref `elem` internalLinks
@@ -483,6 +483,7 @@ sectionHeader unnumbered ref level lst = do
                        else x)
   let headerWith x y = refLabel $ text x <> y
   let sectionType = case level' of
+                          -1 -> "part"
                           0  -> "chapter"
                           1  -> "section"
                           2  -> "subsection"
