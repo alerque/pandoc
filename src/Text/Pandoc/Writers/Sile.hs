@@ -530,8 +530,7 @@ inlineListToSile lst =
        fixBreaks ys@(LineBreak : LineBreak : _) =
          case span (== LineBreak) ys of
                (lbs, rest) -> RawInline "sile"
-                               ("\\\\[" ++ show (length lbs) ++
-                                "\\baselineskip]") : fixBreaks rest
+                               ("\\hfill\\break\n\\skip[height=" ++ show (length lbs - 1) ++ "bs]\n") : fixBreaks rest
        fixBreaks (y:ys) = y : fixBreaks ys
 
 -- | Convert inline element to Sile
