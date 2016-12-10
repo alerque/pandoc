@@ -66,12 +66,17 @@ data WriterState =
 writeSile :: WriterOptions -> Pandoc -> String
 writeSile options document =
   evalState (pandocToSile options document) $
-  WriterState { stInQuote = False, stInHeading = False,
-                stOLLevel = 1, stOptions = options,
+  WriterState { stInQuote = False,
+                stInHeading = False,
+                stOLLevel = 1,
+                stOptions = options,
                 stTable = False, stStrikeout = False,
                 stUrl = False, stGraphics = False,
                 stLHS = False,
-                stBook = writerTopLevelDivision options < Section,
+                stBook = (case writerTopLevelDivision options of
+                           TopLevelPart    -> True
+                           TopLevelChapter -> True
+                           _               -> False),
                 stHighlighting = False, stInternalLinks = [] }
 
 pandocToSile :: WriterOptions -> Pandoc -> State WriterState String
@@ -85,9 +90,9 @@ pandocToSile options (Pandoc meta blocks) = do
                    else blocks
   -- see if there are internal links
   let isInternalLink (Link _ _ ('#':xs,_))  = [xs]
-      isInternalLink _                    = []
+      isInternalLink _                      = []
   modify $ \s -> s{ stInternalLinks = query isInternalLink blocks' }
-  let template = writerTemplate options
+  let template = maybe "" id $ writerTemplate options
   -- set stBook depending on documentclass
   let colwidth = if writerWrapText options == WrapAuto
                     then Just $ writerColumns options
@@ -96,7 +101,7 @@ pandocToSile options (Pandoc meta blocks) = do
               (fmap (render colwidth) . blockListToSile)
               (fmap (render colwidth) . inlineListToSile)
               meta
-  let bookClasses = ["book"]
+  let bookClasses = ["book", "bible"]
   let documentClass = case P.parse pDocumentClass "template" template of
                               Right r -> r
                               Left _  -> ""
@@ -164,9 +169,9 @@ pandocToSile options (Pandoc meta blocks) = do
                   defField "section-titles" True $
                   defField "geometry" geometryFromMargins $
                   metadata
-  return $ if writerStandalone options
-              then renderTemplate' template context
-              else main
+  return $ case writerTemplate options of
+                Nothing  -> main
+                Just tpl -> renderTemplate' tpl context
 
 -- | Convert Elements to Sile
 elementToSile :: WriterOptions -> Element -> State WriterState Doc
@@ -334,26 +339,29 @@ blockToSile (Header level (id',classes,_) lst) = do
 blockToSile (Table caption aligns widths heads rows) = do
   headers <- if all null heads
                 then return empty
-                else ($$ "\\midrule\n") `fmap`
-                      (tableRowToSile True aligns widths) heads
+                else do
+                    contents <- (tableRowToSile True aligns widths) heads
+                    return ("\\toprule" $$ contents $$ "\\midrule")
   let endhead = if all null heads
                    then empty
                    else text "\\endhead"
+  let endfirsthead = if all null heads
+                       then empty
+                       else text "\\endfirsthead"
   captionText <- inlineListToSile caption
   let capt = if isEmpty captionText
                 then empty
-                else text "\\caption" <> braces captionText
-                         <> "\\tabularnewline\n\\toprule\n"
-                         <> headers
-                         <> "\\endfirsthead"
+                else text "\\caption" <> braces captionText <> "\\tabularnewline"
+                         $$ headers
+                         $$ endfirsthead
   rows' <- mapM (tableRowToSile False aligns widths) rows
   let colDescriptors = text $ concat $ map toColDescriptor aligns
   modify $ \s -> s{ stTable = True }
-  return $ "\\begin{longtable}[c]" <>
+  return $ "\\begin{longtable}[]" <>
               braces ("@{}" <> colDescriptors <> "@{}")
               -- the @{} removes extra space at beginning and end
          $$ capt
-         $$ "\\toprule"
+         $$ (if all null heads then "\\toprule" else empty)
          $$ headers
          $$ endhead
          $$ vcat rows'
@@ -458,9 +466,9 @@ sectionHeader :: Bool    -- True for unnumbered
               -> Int
               -> [Inline]
               -> State WriterState Doc
-sectionHeader unnumbered ref level lst = do
+sectionHeader unnumbered ident level lst = do
   txt <- inlineListToSile lst
-  lab <- text `fmap` toLabel ref
+  lab <- text `fmap` toLabel ident
   plain <- stringToSile TextString $ foldl (++) "" $ map stringify lst
   let noNote (Note _) = Str ""
       noNote x        = x
@@ -468,15 +476,17 @@ sectionHeader unnumbered ref level lst = do
   let stuffing = brackets options <> braces txt
   book <- gets stBook
   opts <- gets stOptions
-  let topLevelDivision = min (if book then Chapter else Section)
-                             (writerTopLevelDivision opts)
+  let topLevelDivision = if book && writerTopLevelDivision opts == TopLevelDefault
+                         then TopLevelChapter
+                         else writerTopLevelDivision opts
   let level' = case topLevelDivision of
-                 Part    -> level - 3
-                 Chapter -> level - 2
-                 Section -> level - 1
+                  TopLevelPart    -> level - 3
+                  TopLevelChapter -> level - 2
+                  TopLevelSection -> level - 1
+                  TopLevelDefault -> level - 1
   internalLinks <- gets stInternalLinks
   let lab' = "dest=" <> lab <> ",title=" <> txt
-  let refLabel x = (if ref `elem` internalLinks
+  let refLabel x = (if ident `elem` internalLinks
                        then text "\\pdf:link"
                                 <> brackets lab'
                                 <> braces x
