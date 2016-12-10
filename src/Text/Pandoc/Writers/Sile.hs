@@ -623,7 +623,7 @@ inlineToSile (Link _ txt (src, _)) =
                    braces ("\\url" <> braces contents)
         _ -> do contents <- inlineListToSile txt
                 src' <- stringToSile URLString (escapeURI src)
-                return $ text ("\\href{" ++ src' ++ "}{") <>
+                return $ text ("\\anchor[href=" ++ src' ++ "]{") <>
                          contents <> char '}'
 inlineToSile (Image attr _ (source, _)) = do
   modify $ \s -> s{ stGraphics = True }
