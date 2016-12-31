@@ -10,13 +10,13 @@ GHCOPTS=-fdiagnostics-color=always -Wall -fno-warn-unused-do-bind -Wincomplete-r
 # -Wredundant-constraints (problematic if we want to support older base)
 WEBSITE=../../web/pandoc.org
 
-sile_install: quick
-	sudo cp ~/.local/bin/pandoc /usr/local/bin/
+sile_install: sile_quick
+	sudo cabal install --prefix=/usr/local
+	sudo chown caleb:caleb . -R
 
 sile_quick:
 	cabal --ignore-sandbox configure --disable-tests -fembed_data_files --disable-optimization
 	cabal build
-	sudo cabal install --prefix=/usr/local
 
 quick:
 	stack install --ghc-options='$(GHCOPTS)' --install-ghc --flag 'pandoc:embed_data_files' --fast --test --test-arguments='-j4 --hide-successes $(TESTARGS)'
