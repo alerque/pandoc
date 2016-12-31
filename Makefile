@@ -7,13 +7,13 @@ GHCOPTS=-fdiagnostics-color=always
 WEBSITE=../../web/pandoc.org
 REVISION?=1
 
-sile_install: quick
-	sudo cp ~/.local/bin/pandoc /usr/local/bin/
+sile_install: sile_quick
+	sudo cabal install --prefix=/usr/local
+	sudo chown caleb:caleb . -R
 
 sile_quick:
 	cabal --ignore-sandbox configure --disable-tests -fembed_data_files --disable-optimization
 	cabal build
-	sudo cabal install --prefix=/usr/local
 
 quick:
 	stack install --ghc-options='$(GHCOPTS)' --install-ghc --flag 'pandoc:embed_data_files' --fast --test --ghc-options='-j +RTS -A64m -RTS' --test-arguments='-j4 --hide-successes $(TESTARGS)'
