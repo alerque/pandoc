@@ -1,9 +1,8 @@
 version=$(shell grep '^Version:' pandoc.cabal | awk '{print $$2;}')
 pandoc=$(shell find dist -name pandoc -type f -exec ls -t {} \; | head -1)
 
-sile_install: sile_quick
-	sudo cabal install --prefix=/usr/local
-	sudo chown caleb:caleb . -R
+sile_install: quick
+	sudo cp ~/.local/bin/pandoc /usr/local/bin/
 
 sile_quick:
 	cabal --ignore-sandbox configure --disable-tests -fembed_data_files --disable-optimization
