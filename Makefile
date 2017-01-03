@@ -7,8 +7,11 @@ GHCOPTS=-fdiagnostics-color=always
 WEBSITE=../../web/pandoc.org
 REVISION?=1
 
-sile_install:
-	sudo chown caleb:caleb . -R
+sile_install: quick
+	sudo cp ~/.local/bin/pandoc /usr/local/bin/
+
+sile_quick:
+	cabal --ignore-sandbox configure --disable-tests -fembed_data_files --disable-optimization
 	cabal build
 	sudo cabal install --prefix=/usr/local
 
