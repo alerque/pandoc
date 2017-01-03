@@ -5,8 +5,11 @@ BRANCH?=master
 RESOLVER=nightly-2017-10-22
 GHCOPTS=-fdiagnostics-color=always -Wall -fno-warn-unused-do-bind -Wincomplete-record-updates -Wnoncanonical-monad-instances -Wnoncanonical-monadfail-instances
 
-sile_install:
-	sudo chown caleb:caleb . -R
+sile_install: quick
+	sudo cp ~/.local/bin/pandoc /usr/local/bin/
+
+sile_quick:
+	cabal --ignore-sandbox configure --disable-tests -fembed_data_files --disable-optimization
 	cabal build
 	sudo cabal install --prefix=/usr/local
 
