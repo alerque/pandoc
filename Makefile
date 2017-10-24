@@ -16,7 +16,7 @@ sile_quick:
 	cabal build
 
 quick:
-	stack install --ghc-options='$(GHCOPTS)' --install-ghc --flag 'pandoc:embed_data_files' --fast --test --ghc-options='-j +RTS -A64m -RTS' --test-arguments='-j4 --hide-successes $(TESTARGS)'
+	stack install --ghc-options='$(GHCOPTS)' --install-ghc --flag 'pandoc:embed_data_files' --fast
 
 quick-cabal:
 	cabal new-configure . --ghc-options '$(GHCOPTS)' --disable-optimization --enable-tests
