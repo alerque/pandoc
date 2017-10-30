@@ -37,7 +37,7 @@ import Text.Pandoc.Writers.Shared
 import Text.Pandoc.Options
 import Text.Pandoc.Templates
 import Text.Printf ( printf )
-import Network.URI ( isURI, unEscapeString )
+import Network.URI ( unEscapeString )
 import Data.List ( stripPrefix, intercalate, intersperse, nub )
 import Data.Char ( isPunctuation, isAscii, isLetter, isDigit, ord )
 import Data.Maybe ( isJust, catMaybes )
