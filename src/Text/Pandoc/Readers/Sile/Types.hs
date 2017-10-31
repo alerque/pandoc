@@ -29,8 +29,6 @@ Types for Sile tokens and macros.
 -}
 module Text.Pandoc.Readers.Sile.Types ( Tok(..)
                                        , TokType(..)
-                                       , Macro(..)
-                                       , ExpansionPoint(..)
                                        , SourcePos
                                        )
 where
@@ -43,10 +41,3 @@ data TokType = CtrlSeq Text | Spaces | Newline | Symbol | Word | Comment |
 
 data Tok = Tok SourcePos TokType Text
      deriving (Eq, Ord, Show)
-
-data ExpansionPoint = ExpandWhenDefined | ExpandWhenUsed
-     deriving (Eq, Ord, Show)
-
-data Macro = Macro ExpansionPoint Int (Maybe [Tok]) [Tok]
-     deriving Show
-

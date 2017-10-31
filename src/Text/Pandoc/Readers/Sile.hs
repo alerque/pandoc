@@ -34,7 +34,6 @@ Conversion of Sile to 'Pandoc' document.
 
 -}
 module Text.Pandoc.Readers.Sile (  readSile,
-                                   applyMacros,
                                    rawSileInline,
                                    rawSileBlock,
                                    inlineCommand
@@ -65,10 +64,9 @@ import Text.Pandoc.Options
 import Text.Pandoc.Parsing hiding (many, optional, withRaw,
                             space, (<|>), spaces, blankline)
 import Text.Pandoc.Shared
-import Text.Pandoc.Readers.Sile.Types (Macro(..), ExpansionPoint(..), Tok(..),
-                            TokType(..))
+import Text.Pandoc.Readers.Sile.Types (Tok(..), TokType(..))
 import Text.Pandoc.Walk
-import Text.Pandoc.Error (PandocError(PandocParsecError, PandocMacroLoop))
+import Text.Pandoc.Error (PandocError(PandocParsecError))
 import Text.Parsec.Pos
 
 -- for debugging:
@@ -146,7 +144,6 @@ incrementHeaderNum level (HeaderNum ns) = HeaderNum $
 data SileState = SileState{   sOptions       :: ReaderOptions
                             , sMeta          :: Meta
                             , sQuoteContext  :: QuoteContext
-                            , sMacros        :: M.Map Text Macro
                             , sContainers    :: [String]
                             , sHeaders       :: M.Map Inlines String
                             , sLogMessages   :: [LogMessage]
@@ -200,10 +197,6 @@ instance HasHeaderMap SileState where
   extractHeaderMap     = sHeaders
   updateHeaderMap f st = st{ sHeaders = f $ sHeaders st }
 
-instance HasMacros SileState where
-  extractMacros  st  = sMacros st
-  updateMacros f st  = st{ sMacros = f (sMacros st) }
-
 instance HasReaderOptions SileState where
   extractReaderOptions = sOptions
 
@@ -230,21 +223,7 @@ rawSileParser parser = do
   case res of
        Left _    -> mzero
        Right (raw, st) -> do
-         updateState (updateMacros ((sMacros st) <>))
          takeP (T.length (untokenize raw))
-
-applyMacros :: (PandocMonad m, HasMacros s, HasReaderOptions s)
-            => String -> ParserT String s m String
-applyMacros s = (guardDisabled Ext_sile_macros >> return s) <|>
-   do let retokenize = doMacros 0 *>
-             (toksToString <$> many (satisfyTok (const True)))
-      pstate <- getState
-      let lstate = def{ sOptions = extractReaderOptions pstate
-                      , sMacros  = extractMacros pstate }
-      res <- runParserT retokenize lstate "math" (tokenize "math" (T.pack s))
-      case res of
-           Left e -> fail (show e)
-           Right s' -> return s'
 
 rawSileBlock :: (PandocMonad m, HasReaderOptions s)
               => ParserT String s m String
@@ -269,12 +248,11 @@ inlineCommand = do
          return (il, raw, st)
   pstate <- getState
   let lstate = def{ sOptions = extractReaderOptions pstate
-                  , sMacros  = extractMacros pstate }
+                  }
   res <- runParserT rawinline lstate "source" toks
   case res of
        Left _ -> mzero
        Right (il, raw, s) -> do
-         updateState $ updateMacros (const $ sMacros s)
          takeP (T.length (untokenize raw))
          return il
 
