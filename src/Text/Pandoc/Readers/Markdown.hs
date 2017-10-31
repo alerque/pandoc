@@ -41,7 +41,7 @@ import Text.Pandoc.Parsing hiding (tableWith)
 import Text.Pandoc.Readers.HTML (htmlInBalanced, htmlTag, isBlockTag,
                                  isCommentTag, isInlineTag, isTextTag)
 import Text.Pandoc.Readers.LaTeX (applyMacros, rawLaTeXBlock, rawLaTeXInline)
-import Text.Pandoc.Readers.Sile (applyMacros, rawSileBlock, rawSileInline)
+import Text.Pandoc.Readers.Sile (rawSileBlock, rawSileInline)
 import Text.Pandoc.Shared
 import qualified Text.Pandoc.UTF8 as UTF8
 import Text.Pandoc.XML (fromEntities)
@@ -419,6 +419,7 @@ block = do
                , htmlBlock
                , table
                , codeBlockIndented
+               , rawSilBlock
                , rawTeXBlock
                , lineBlock
                , blockQuote
@@ -1067,6 +1068,15 @@ rawVerbatimBlock = htmlInBalanced isVerbTag
         isVerbTag (TagOpen "script" _)   = True
         isVerbTag (TagOpen "textarea" _) = True
         isVerbTag _                      = False
+
+rawSilBlock :: PandocMonad m => MarkdownParser m (F Blocks)
+rawSilBlock = do
+  guardEnabled Ext_raw_sile
+  result <- (B.rawBlock "sile" . concat <$>
+                  rawSileBlock `sepEndBy1` blankline)
+
+  optional blanklines
+  return $ return result
 
 rawTeXBlock :: PandocMonad m => MarkdownParser m (F Blocks)
 rawTeXBlock = do
