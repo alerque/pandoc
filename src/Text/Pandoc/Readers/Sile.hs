@@ -33,10 +33,11 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 Conversion of Sile to 'Pandoc' document.
 
 -}
-module Text.Pandoc.Readers.Sile ( readSile,
+module Text.Pandoc.Readers.Sile (  readSile,
+                                   applyMacros,
                                    rawSileInline,
                                    rawSileBlock,
-                                   inlineCommand,
+                                   inlineCommand
                                  ) where
 
 import Control.Applicative (many, optional, (<|>))
@@ -64,9 +65,10 @@ import Text.Pandoc.Options
 import Text.Pandoc.Parsing hiding (many, optional, withRaw,
                             space, (<|>), spaces, blankline)
 import Text.Pandoc.Shared
-import Text.Pandoc.Readers.Sile.Types (ExpansionPoint(..), Tok(..), TokType(..))
+import Text.Pandoc.Readers.Sile.Types (Macro(..), ExpansionPoint(..), Tok(..),
+                            TokType(..))
 import Text.Pandoc.Walk
-import Text.Pandoc.Error (PandocError(PandocParsecError, PandocParseError))
+import Text.Pandoc.Error (PandocError(PandocParsecError, PandocMacroLoop))
 import Text.Parsec.Pos
 
 -- for debugging:
@@ -123,7 +125,7 @@ resolveRefs _ x = x
 --   res <- runIOorExplode (runParserT p defaultSileState{
 --             sOptions = def{ readerExtensions =
 --               enableExtension Ext_raw_tex $
---                 getDefaultExtensions "latex" }} "source" (tokenize "source" t))
+--                 getDefaultExtensions "sile" }} "source" (tokenize "source" t))
 --   case res of
 --        Left e  -> error (show e)
 --        Right r -> return r
@@ -144,6 +146,7 @@ incrementHeaderNum level (HeaderNum ns) = HeaderNum $
 data SileState = SileState{   sOptions       :: ReaderOptions
                             , sMeta          :: Meta
                             , sQuoteContext  :: QuoteContext
+                            , sMacros        :: M.Map Text Macro
                             , sContainers    :: [String]
                             , sHeaders       :: M.Map Inlines String
                             , sLogMessages   :: [LogMessage]
@@ -197,6 +200,10 @@ instance HasHeaderMap SileState where
   extractHeaderMap     = sHeaders
   updateHeaderMap f st = st{ sHeaders = f $ sHeaders st }
 
+instance HasMacros SileState where
+  extractMacros  st  = sMacros st
+  updateMacros f st  = st{ sMacros = f (sMacros st) }
+
 instance HasReaderOptions SileState where
   extractReaderOptions = sOptions
 
@@ -223,7 +230,21 @@ rawSileParser parser = do
   case res of
        Left _    -> mzero
        Right (raw, st) -> do
+         updateState (updateMacros ((sMacros st) <>))
          takeP (T.length (untokenize raw))
+
+applyMacros :: (PandocMonad m, HasMacros s, HasReaderOptions s)
+            => String -> ParserT String s m String
+applyMacros s = (guardDisabled Ext_sile_macros >> return s) <|>
+   do let retokenize = doMacros 0 *>
+             (toksToString <$> many (satisfyTok (const True)))
+      pstate <- getState
+      let lstate = def{ sOptions = extractReaderOptions pstate
+                      , sMacros  = extractMacros pstate }
+      res <- runParserT retokenize lstate "math" (tokenize "math" (T.pack s))
+      case res of
+           Left e -> fail (show e)
+           Right s' -> return s'
 
 rawSileBlock :: (PandocMonad m, HasReaderOptions s)
               => ParserT String s m String
@@ -248,11 +269,12 @@ inlineCommand = do
          return (il, raw, st)
   pstate <- getState
   let lstate = def{ sOptions = extractReaderOptions pstate
-                  }
+                  , sMacros  = extractMacros pstate }
   res <- runParserT rawinline lstate "source" toks
   case res of
        Left _ -> mzero
        Right (il, raw, s) -> do
+         updateState $ updateMacros (const $ sMacros s)
          takeP (T.length (untokenize raw))
          return il
 
@@ -361,18 +383,10 @@ satisfyTok f =
         updatePos _spos _ (Tok pos _ _ : _) = pos
         updatePos spos _ [] = spos
 
-setpos :: SourcePos -> Tok -> Tok
-setpos spos (Tok _ tt txt) = Tok spos tt txt
-
 anyControlSeq :: PandocMonad m => SP m Tok
 anyControlSeq = satisfyTok isCtrlSeq
   where isCtrlSeq (Tok _ (CtrlSeq _) _) = True
         isCtrlSeq _                     = False
-
-anySymbol :: PandocMonad m => SP m Tok
-anySymbol = satisfyTok isSym
-  where isSym (Tok _ Symbol _) = True
-        isSym _                = False
 
 spaces :: PandocMonad m => SP m ()
 spaces = skipMany (satisfyTok (tokTypeIn [Comment, Spaces, Newline]))
@@ -522,38 +536,9 @@ inlineGroup = do
           -- we need the span so we can detitlecase bibtex entries;
           -- we need to know when something is {C}apitalized
 
-mkImage :: PandocMonad m => [(String, String)] -> String -> SP m Inlines
-mkImage options src = do
-   let replaceTextwidth (k,v) =
-         case numUnit v of
-              Just (num, "\\textwidth") -> (k, showFl (num * 100) ++ "%")
-              _ -> (k, v)
-   let kvs = map replaceTextwidth
-             $ filter (\(k,_) -> k `elem` ["width", "height"]) options
-   let attr = ("",[], kvs)
-   let alt = str "image"
-   case takeExtension src of
-        "" -> do
-              defaultExt <- getOption readerDefaultImageExtension
-              return $ imageWith attr (addExtension src defaultExt) "" alt
-        _  -> return $ imageWith attr src "" alt
-
-doxspace :: PandocMonad m => SP m Inlines
-doxspace = do
-  (space <$ lookAhead (satisfyTok startsWithLetter)) <|> return mempty
-  where startsWithLetter (Tok _ Word t) =
-          case T.uncons t of
-               Just (c, _) | isLetter c -> True
-               _ -> False
-        startsWithLetter _ = False
-
-
 lit :: String -> SP m Inlines
 lit = pure . str
 
-removeDoubleQuotes :: Text -> Text
-removeDoubleQuotes t =
-  maybe t id $ T.stripPrefix "\"" t >>= T.stripSuffix "\""
 
 doubleQuote :: PandocMonad m => SP m Inlines
 doubleQuote = do
@@ -597,93 +582,11 @@ quoted' f starter ender = do
                               cs   -> cs)
      else lit startchs
 
-enquote :: PandocMonad m => SP m Inlines
-enquote = do
-  skipopts
-  quoteContext <- sQuoteContext <$> getState
-  if quoteContext == InDoubleQuote
-     then singleQuoted <$> withQuoteContext InSingleQuote tok
-     else doubleQuoted <$> withQuoteContext InDoubleQuote tok
-
-
-keyval :: PandocMonad m => SP m (String, String)
-keyval = try $ do
-  Tok _ Word key <- satisfyTok isWordTok
-  let isSpecSym (Tok _ Symbol t) = t /= "]" && t /= ","
-      isSpecSym _ = False
-  optional sp
-  val <- option [] $ do
-           symbol '='
-           optional sp
-           braced <|> (many1 (satisfyTok isWordTok <|> satisfyTok isSpecSym
-                               <|> anyControlSeq))
-  optional sp
-  optional (symbol ',')
-  optional sp
-  return (T.unpack key, T.unpack . untokenize $ val)
-
-keyvals :: PandocMonad m => SP m [(String, String)]
-keyvals = try $ symbol '[' >> manyTill keyval (symbol ']')
 
 toksToString :: [Tok] -> String
 toksToString = T.unpack . untokenize
 
 -- citations
-
-addPrefix :: [Inline] -> [Citation] -> [Citation]
-addPrefix p (k:ks) = k {citationPrefix = p ++ citationPrefix k} : ks
-addPrefix _ _      = []
-
-addSuffix :: [Inline] -> [Citation] -> [Citation]
-addSuffix s ks@(_:_) =
-  let k = last ks
-  in  init ks ++ [k {citationSuffix = citationSuffix k ++ s}]
-addSuffix _ _ = []
-
-simpleCiteArgs :: PandocMonad m => SP m [Citation]
-simpleCiteArgs = try $ do
-  first  <- optionMaybe $ toList <$> opt
-  second <- optionMaybe $ toList <$> opt
-  keys <- try $ bgroup *> (manyTill citationLabel egroup)
-  let (pre, suf) = case (first  , second ) of
-        (Just s , Nothing) -> (mempty, s )
-        (Just s , Just t ) -> (s , t )
-        _                  -> (mempty, mempty)
-      conv k = Citation { citationId      = k
-                        , citationPrefix  = []
-                        , citationSuffix  = []
-                        , citationMode    = NormalCitation
-                        , citationHash    = 0
-                        , citationNoteNum = 0
-                        }
-  return $ addPrefix pre $ addSuffix suf $ map conv keys
-
-citationLabel :: PandocMonad m => SP m String
-citationLabel  = do
-  optional sp
-  toksToString <$>
-    (many1 (satisfyTok isWordTok <|> symbolIn bibtexKeyChar)
-          <* optional sp
-          <* optional (symbol ',')
-          <* optional sp)
-  where bibtexKeyChar = ".:;?!`'()/*@_+=-[]" :: [Char]
-
-cites :: PandocMonad m => CitationMode -> Bool -> SP m [Citation]
-cites mode multi = try $ do
-  cits <- if multi
-             then many1 simpleCiteArgs
-             else count 1 simpleCiteArgs
-  let cs = concat cits
-  return $ case mode of
-        AuthorInText -> case cs of
-                             (c:rest) -> c {citationMode = mode} : rest
-                             []       -> []
-        _            -> map (\a -> a {citationMode = mode}) cs
-
-citation :: PandocMonad m => String -> CitationMode -> Bool -> SP m Inlines
-citation name mode multi = do
-  (c,raw) <- withRaw $ cites mode multi
-  return $ cite c (rawInline "sile" $ "\\" ++ name ++ (toksToString raw))
 
 
 inlineCommand' :: PandocMonad m => SP m Inlines
@@ -719,8 +622,6 @@ singleChar = try $ do
        return $ Tok pos toktype t1
      else return $ Tok pos toktype t
 
-opt :: PandocMonad m => SP m Inlines
-opt = bracketed inline
 
 rawopt :: PandocMonad m => SP m Text
 rawopt = do
@@ -745,8 +646,6 @@ withRaw parser = do
   let raw = takeWhile (/= nxt) inp
   return (result, raw)
 
-inBrackets :: Inlines -> Inlines
-inBrackets x = str "[" <> x <> str "]"
 
 unescapeURL :: String -> String
 unescapeURL ('\\':x:xs) | isEscapable x = x:unescapeURL xs
@@ -772,47 +671,20 @@ inlineCommands = M.fromList
   , ("textsubscript", extractSpaces subscript <$> tok)
   , ("strong", extractSpaces strong <$> tok)
   , ("textnormal", extractSpaces (spanWith ("",["nodecor"],[])) <$> tok)
-  , ("noindent", unlessParseRaw >> return mempty)
+  , ("noindent", pure mempty)
   , ("%", lit "%")
   , ("{", lit "{")
   , ("}", lit "}")
-  , ("break", linebreak <$ (optional (bracketed inline) *> spaces'))
-  , ("footnote", (note . mconcat) <$> (char '{' *> manyTill block (char '}')))
+  , ("break", linebreak <$ (optional (bracketed inline) *> spaces1))
+  , ("footnote", note <$> grouped block)
   , ("texttt", (code . stringify . toList) <$> tok)
-  , ("url", (unescapeURL <$> braced) >>= \url ->
-       pure (link url "" (str url)))
+  , ("url", ((unescapeURL . T.unpack . untokenize) <$> braced) >>= \url ->
+                  pure (link url "" (str url)))
   , ("href", (unescapeURL . toksToString <$>
                  braced <* optional sp) >>= \url ->
                    tok >>= \lab -> pure (link url "" lab))
   ]
 
-hyperlink :: PandocMonad m => SP m Inlines
-hyperlink = try $ do
-  src <- toksToString <$> braced
-  lab <- tok
-  return $ link ('#':src) "" lab
-
-hypertargetBlock :: PandocMonad m => SP m Blocks
-hypertargetBlock = try $ do
-  ref <- toksToString <$> braced
-  bs <- grouped block
-  case toList bs of
-       [Header 1 (ident,_,_) _] | ident == ref -> return bs
-       _ -> return $ divWith (ref, [], []) bs
-
-hypertargetInline :: PandocMonad m => SP m Inlines
-hypertargetInline = try $ do
-  ref <- toksToString <$> braced
-  ils <- grouped inline
-  return $ spanWith (ref, [], []) ils
-
-
-rawInlineOr :: PandocMonad m => Text -> SP m Inlines -> SP m Inlines
-rawInlineOr name' fallback = do
-  parseRaw <- extensionEnabled Ext_raw_tex <$> getOption readerExtensions
-  if parseRaw
-     then rawInline "latex" <$> getRawCommand name' ("\\" <> name')
-     else fallback
 
 getRawCommand :: PandocMonad m => Text -> Text -> SP m String
 getRawCommand name txt = do
@@ -880,7 +752,6 @@ inline = (mempty <$ comment)
      <|> (str "’" <$ symbol '\'')
      <|> (str "’" <$ symbol '’')
      <|> (str "\160" <$ symbol '~')
-     <|> dollarsMath
      <|> (str . (:[]) <$> primEscape)
      <|> regularSymbol
      <|> (do res <- symbolIn "#^'`\"[]"
@@ -894,12 +765,6 @@ inlines = mconcat <$> many inline
 
 -- block elements:
 
-begin_ :: PandocMonad m => Text -> SP m ()
-begin_ t = (try $ do
-  controlSeq "begin"
-  spaces
-  txt <- untokenize <$> braced
-  guard (t == txt)) <?> ("\\begin{" ++ T.unpack t ++ "}")
 
 end_ :: PandocMonad m => Text -> SP m ()
 end_ t = (try $ do
@@ -908,12 +773,6 @@ end_ t = (try $ do
   txt <- untokenize <$> braced
   guard $ t == txt) <?> ("\\end{" ++ T.unpack t ++ "}")
 
-preamble :: PandocMonad m => SP m Blocks
-preamble = mempty <$ many preambleBlock
-  where preambleBlock =  spaces1
-                     <|> void blockCommand
-                     <|> void braced
-                     <|> (notFollowedBy (begin_ "document") >> void anyTok)
 
 paragraph :: PandocMonad m => SP m Blocks
 paragraph = do
@@ -943,32 +802,11 @@ bracketedToks = do
   symbol '['
   mconcat <$> manyTill (braced <|> (:[]) <$> anyTok) (symbol ']')
 
-bracketedNum :: PandocMonad m => SP m Int
-bracketedNum = do
-  ds <- untokenize <$> bracketedToks
-  case safeRead (T.unpack ds) of
-       Just i -> return i
-       _      -> return 0
-
-setCaption :: PandocMonad m => SP m Blocks
-setCaption = do
-  ils <- tok
-  mblabel <- option Nothing $
-               try $ spaces >> controlSeq "label" >> (Just <$> tok)
-  let ils' = case mblabel of
-                  Just lab -> ils <> spanWith
-                                ("",[],[("label", stringify lab)]) mempty
-                  Nothing  -> ils
-  updateState $ \st -> st{ sCaption = Just ils' }
-  return mempty
 
 looseItem :: PandocMonad m => SP m Blocks
 looseItem = do
   skipopts
   return mempty
-
-resetCaption :: PandocMonad m => SP m ()
-resetCaption = updateState $ \st -> st{ sCaption = Nothing }
 
 section :: PandocMonad m => Bool -> Attr -> Int -> SP m Blocks
 section starred (ident, classes, kvs) lvl = do
@@ -997,7 +835,7 @@ blockCommand = try $ do
   let names = ordNub [name', name]
   let rawDefiniteBlock = do
         guard $ isBlockCommand name
-        rawBlock "latex" <$> getRawCommand name (txt <> star)
+        rawBlock "sile" <$> getRawCommand name (txt <> star)
   -- heuristic:  if it could be either block or inline, we
   -- treat it if block if we have a sequence of block
   -- commands followed by a newline.  But we stop if we
@@ -1009,26 +847,12 @@ blockCommand = try $ do
         guard $ "start" `T.isPrefixOf` n
   let rawMaybeBlock = try $ do
         guard $ not $ isInlineCommand name
-        curr <- rawBlock "latex" <$> getRawCommand name (txt <> star)
+        curr <- rawBlock "sile" <$> getRawCommand name (txt <> star)
         rest <- many $ notFollowedBy startCommand *> blockCommand
         lookAhead $ blankline <|> startCommand
         return $ curr <> mconcat rest
   let raw = rawDefiniteBlock <|> rawMaybeBlock
   lookupListDefault raw names blockCommands
-
-closing :: PandocMonad m => SP m Blocks
-closing = do
-  contents <- tok
-  st <- getState
-  let extractInlines (MetaBlocks [Plain ys]) = ys
-      extractInlines (MetaBlocks [Para ys ]) = ys
-      extractInlines _                       = []
-  let sigs = case lookupMeta "author" (sMeta st) of
-                  Just (MetaList xs) ->
-                    para $ trimInlines $ fromList $
-                      intercalate [LineBreak] $ map extractInlines xs
-                  _ -> mempty
-  return $ para (trimInlines contents) <> sigs
 
 blockCommands :: PandocMonad m => M.Map Text (SP m Blocks)
 blockCommands = M.fromList $
@@ -1077,7 +901,7 @@ rawEnv name = do
   pos1 <- getPosition
   (bs, raw) <- withRaw $ env name blocks
   if parseRaw
-     then return $ rawBlock "latex"
+     then return $ rawBlock "sile"
                  $ T.unpack $ beginCommand <> untokenize raw
      else do
        report $ SkippedContent (T.unpack beginCommand) pos1
@@ -1101,54 +925,10 @@ obeylines = do
 item :: PandocMonad m => SP m Blocks
 item = void blocks *> controlSeq "item" *> skipopts *> blocks
 
-descItem :: PandocMonad m => SP m (Inlines, [Blocks])
-descItem = do
-  blocks -- skip blocks before item
-  controlSeq "item"
-  optional sp
-  ils <- opt
-  bs <- blocks
-  return (ils, [bs])
-
 listenv :: PandocMonad m => Text -> SP m a -> SP m a
 listenv name p = try $ do
   res <- env name p
   return res
-
-orderedList' :: PandocMonad m => SP m Blocks
-orderedList' = try $ do
-  spaces
-  let markerSpec = do
-        symbol '['
-        ts <- toksToString <$> manyTill anyTok (symbol ']')
-        case runParser anyOrderedListMarker def "option" ts of
-             Right r -> return r
-             Left _  -> do
-               pos <- getPosition
-               report $ SkippedContent ("[" ++ ts ++ "]") pos
-               return (1, DefaultStyle, DefaultDelim)
-  (_, style, delim) <- option (1, DefaultStyle, DefaultDelim) markerSpec
-  spaces
-  optional $ try $ controlSeq "setlength"
-                   *> grouped (count 1 $ controlSeq "itemindent")
-                   *> braced
-  spaces
-  start <- option 1 $ try $ do pos <- getPosition
-                               controlSeq "setcounter"
-                               ctr <- toksToString <$> braced
-                               guard $ "enum" `isPrefixOf` ctr
-                               guard $ all (`elem` ['i','v']) (drop 4 ctr)
-                               optional sp
-                               num <- toksToString <$> braced
-                               case safeRead num of
-                                    Just i -> return (i + 1 :: Int)
-                                    Nothing -> do
-                                      report $ SkippedContent
-                                        ("\\setcounter{" ++ ctr ++
-                                         "}{" ++ num ++ "}") pos
-                                      return 1
-  bs <- listenv "enumerate" (many item)
-  return $ orderedListWith (start, style, delim) bs
 
 -- tables
 
