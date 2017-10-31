@@ -40,9 +40,8 @@ import Data.List (foldl', intercalate, intersperse, stripPrefix)
 import Data.Maybe (catMaybes, isJust)
 import Data.Text (Text)
 import Network.URI (unEscapeString)
-import Text.Pandoc.Class (PandocMonad, report, toLang)
+import Text.Pandoc.Class (PandocMonad, report)
 import Text.Pandoc.Definition
-import Text.Pandoc.ImageSize
 import Text.Pandoc.Logging
 import Text.Pandoc.Options
 import Text.Pandoc.Pretty
@@ -57,6 +56,7 @@ data WriterState =
   WriterState {
                 stInQuote       :: Bool          -- true if in a blockquote
               , stInHeading     :: Bool          -- true if in a section heading
+              , stNotes         :: [Doc]         -- notes
               , stOLLevel       :: Int           -- level of ordered list nesting
               , stOptions       :: WriterOptions -- writer options, so they don't have to be parameter
               , stTable         :: Bool          -- true if document has a table
@@ -73,6 +73,7 @@ startingState :: WriterOptions -> WriterState
 startingState options = WriterState {
                   stInQuote = False
                 , stInHeading = False
+                , stNotes = []
                 , stOLLevel = 1
                 , stOptions = options
                 , stTable = False
@@ -143,8 +144,6 @@ pandocToSile options (Pandoc meta blocks) = do
   st <- get
   titleMeta <- stringToSile TextString $ stringify $ docTitle meta
   authorsMeta <- mapM (stringToSile TextString . stringify) $ docAuthors meta
-  docLangs <- catMaybes <$>
-      mapM (toLang . Just) (ordNub (query (extract "lang") blocks))
   let hasStringValue x = isJust (getField x metadata :: Maybe String)
   let geometryFromMargins = intercalate [','] $ catMaybes $
                               map (\(x,y) ->
@@ -211,7 +210,6 @@ data StringContext = TextString
 stringToSile :: PandocMonad m => StringContext -> String -> SW m String
 stringToSile  _     []     = return ""
 stringToSile  ctx (x:xs) = do
-  opts <- gets stOptions
   rest <- stringToSile ctx xs
   let isUrl = ctx == URLString
   return $
@@ -235,11 +233,6 @@ toLabel z = go `fmap` stringToSile URLString z
 inCmd :: String -> Doc -> Doc
 inCmd cmd contents = char '\\' <> text cmd <> braces contents
 
-isListBlock :: Block -> Bool
-isListBlock (BulletList _)     = True
-isListBlock (OrderedList _ _)  = True
-isListBlock (DefinitionList _) = True
-isListBlock _                  = False
 
 isLineBreakOrSpace :: Inline -> Bool
 isLineBreakOrSpace LineBreak = True
@@ -252,7 +245,7 @@ blockToSile :: PandocMonad m
              => Block     -- ^ Block to convert
              -> SW m Doc
 blockToSile Null = return empty
-blockToSile (Div (identifier,classes,kvs) bs) = do
+blockToSile (Div (identifier,_,_) bs) = do
   ref <- toLabel identifier
   let linkAnchor = if null identifier
                       then empty
@@ -264,12 +257,18 @@ blockToSile (Plain lst) =
 -- title beginning with fig: indicates that the image is a figure
 blockToSile (Para [Image attr@(ident, _, _) txt (src,'f':'i':'g':':':tit)]) = do
   capt <- inlineListToSile txt
-  captForLof <- brackets <$> inlineListToSile txt
+  notes <- gets stNotes
+  captForLof <- if null notes
+                   then return empty
+                   else brackets <$> inlineListToSile (walk deNote txt)
   img <- inlineToSile (Image attr txt (src,tit))
+  let footnotes = notesToSile notes
   lab <- labelFor ident
   let caption = "\\caption" <> captForLof <> braces capt <> lab
-  figure <- hypertarget True ident img
-  return $ figure
+  let figure = cr <> "\\begin{figure}" $$ "\\centering" $$ img $$
+              caption $$ "\\end{figure}" <> cr
+  figure' <- hypertarget True ident figure
+  return $ figure' $$ footnotes
 blockToSile (Para [Str ".",Space,Str ".",Space,Str "."]) = do
   inlineListToSile [Str ".",Space,Str ".",Space,Str "."]
 blockToSile (Para lst) =
@@ -308,7 +307,6 @@ blockToSile (CodeBlock (identifier,classes,keyvalAttr) str) = do
         return $ flush (linkAnchor $$ "\\begin{code}" $$ text str $$
                             "\\end{code}") $$ cr
   let rawCodeBlock = do
-        st <- get
         env <- do return "verbatim"
         return $ flush (linkAnchor $$
                         text "\\begin" <> sileParams <> braces env $$
@@ -331,7 +329,7 @@ blockToSile (BulletList lst) = do
   return $ text ("\\begin{listarea}") $$ vcat items $$
              "\\end{listarea}"
 blockToSile (OrderedList _ []) = return empty -- otherwise error
-blockToSile (OrderedList (start, numstyle, numdelim) lst) = do
+blockToSile (OrderedList (_, numstyle, _) lst) = do
   st <- get
   let oldlevel = stOLLevel st
   put $ st {stOLLevel = oldlevel + 1}
@@ -500,9 +498,6 @@ sectionHeader :: PandocMonad m
 sectionHeader unnumbered ident level lst = do
   txt <- inlineListToSile lst
   lab <- text `fmap` toLabel ident
-  plain <- stringToSile TextString $ foldl (++) "" $ map stringify lst
-  let noNote (Note _) = Str ""
-      noNote x        = x
   let options = if unnumbered then "numbering=false" else empty
   let stuffing = brackets options <> braces txt
   book <- gets stBook
@@ -532,7 +527,6 @@ sectionHeader unnumbered ident level lst = do
                           4  -> "paragraph"
                           5  -> "subparagraph"
                           _  -> ""
-  inQuote <- gets stInQuote
   return $ if level' > 5
               then txt
               else headerWith ('\\':sectionType) stuffing
@@ -570,19 +564,12 @@ inlineListToSile lst =
        fixNbsps s = let (ys,zs) = span (=='\160') s
                     in  replicate (length ys) hspace ++ [Str zs]
        hspace = RawInline "sile" "\\kern[width=1spc]"
-       -- linebreaks after blank lines cause problems:
-       fixBreaks [] = []
-       fixBreaks ys@(LineBreak : LineBreak : _) =
-         case span (== LineBreak) ys of
-               (lbs, rest) -> RawInline "sile"
-                               ("\\hfill\\break\n\\skip[height=" ++ show (length lbs - 1) ++ "bs]\n") : fixBreaks rest
-       fixBreaks (y:ys) = y : fixBreaks ys
 
 -- | Convert inline element to Sile
 inlineToSile :: PandocMonad m
               => Inline    -- ^ Inline to convert
               -> SW m Doc
-inlineToSile (Span (id',classes,kvs) ils) = do
+inlineToSile (Span (id',classes,_) ils) = do
   ref <- toLabel id'
   let linkAnchor = if null id'
                       then empty
@@ -615,16 +602,14 @@ inlineToSile (Cite cits lst) = do
      Biblatex -> citationsToBiblatex cits
      _        -> inlineListToSile lst
 
-inlineToSile (Code (_,classes,_) str) = do
-  opts <- gets stOptions
+inlineToSile (Code (_,_,_) str) = do
   rawCode
     where rawCode = liftM (text . (\s -> "\\tt{" ++ escapeSpaces s ++ "}"))
                           $ stringToSile CodeString str
            where
              escapeSpaces =  concatMap (\c -> if c == ' ' then "\\ " else [c])
-inlineToSile (Quoted qt lst) = do
+inlineToSile (Quoted _ lst) = do
   contents <- inlineListToSile lst
-  opts <- gets stOptions
   return $ "\\quote" <> braces contents
 inlineToSile (Str str) = liftM text $ stringToSile TextString str
 inlineToSile (Math InlineMath str) =
@@ -675,7 +660,7 @@ inlineToSile (Link _ txt (src, tit)) =
 inlineToSile il@(Image _ _ ('d':'a':'t':'a':':':_, _)) = do
   report $ InlineNotRendered il
   return empty
-inlineToSile (Image attr _ (source, _)) = do
+inlineToSile (Image _ _ (source, _)) = do
   setEmptyLine False
   modify $ \s -> s{ stGraphics = True }
   let source' = if isURI source
@@ -793,22 +778,6 @@ citationsToBiblatex (c:cs) = do
 
 citationsToBiblatex _ = return empty
 
--- Extract a key from divs and spans
-extract :: String -> Block -> [String]
-extract key (Div attr _)     = lookKey key attr
-extract key (Plain ils)      = query (extractInline key) ils
-extract key (Para ils)       = query (extractInline key) ils
-extract key (Header _ _ ils) = query (extractInline key) ils
-extract _ _                  = []
-
--- Extract a key from spans
-extractInline :: String -> Inline -> [String]
-extractInline key (Span attr _) = lookKey key attr
-extractInline _ _               = []
-
--- Look up a key in an attribute and give a list of its values
-lookKey :: String -> Attr -> [String]
-lookKey key (_,_,kvs) =  maybe [] words $ lookup key kvs
 
 pDocumentOptions :: P.Parsec String () [String]
 pDocumentOptions = do
