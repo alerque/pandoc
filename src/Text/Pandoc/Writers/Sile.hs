@@ -35,14 +35,10 @@ module Text.Pandoc.Writers.Sile (
   ) where
 import Control.Applicative ((<|>))
 import Control.Monad.State.Strict
-import Data.Aeson (FromJSON, object, (.=))
-import Data.Char (isAlphaNum, isAscii, isDigit, isLetter, isPunctuation, ord,
-                  toLower)
-import Data.List (foldl', intercalate, intersperse, isInfixOf, nubBy,
-                  stripPrefix, (\\))
-import Data.Maybe (catMaybes, fromMaybe, isJust)
+import Data.Char (isAscii, isDigit, isLetter, isPunctuation, ord)
+import Data.List (foldl', intercalate, intersperse, stripPrefix)
+import Data.Maybe (catMaybes, isJust)
 import Data.Text (Text)
-import qualified Data.Text as T
 import Network.URI (unEscapeString)
 import Text.Pandoc.Class (PandocMonad, report, toLang)
 import Text.Pandoc.Definition
@@ -621,7 +617,6 @@ inlineToSile (Cite cits lst) = do
 
 inlineToSile (Code (_,classes,_) str) = do
   opts <- gets stOptions
-  inHeading <- gets stInHeading
   rawCode
     where rawCode = liftM (text . (\s -> "\\tt{" ++ escapeSpaces s ++ "}"))
                           $ stringToSile CodeString str
@@ -683,12 +678,10 @@ inlineToSile il@(Image _ _ ('d':'a':'t':'a':':':_, _)) = do
 inlineToSile (Image attr _ (source, _)) = do
   setEmptyLine False
   modify $ \s -> s{ stGraphics = True }
-  opts <- gets stOptions
   let source' = if isURI source
                    then source
                    else unEscapeString source
   source'' <- stringToSile URLString source'
-  inHeading <- gets stInHeading
   return $ "\\img" <> brackets ("src=" <> text source'')
 inlineToSile (Note contents) = do
   setEmptyLine False
@@ -698,13 +691,6 @@ inlineToSile (Note contents) = do
                    _                   -> empty
   let noteContents = nest 2 contents' <> optnl
   return $ "\\footnote" <> braces noteContents
-
-protectCode :: [Inline] -> [Inline]
-protectCode [] = []
-protectCode (x@(Code ("",[],[]) _) : xs) = x : protectCode xs
-protectCode (x@(Code _ _) : xs) = ltx "\\mbox{" : x : ltx "}" : xs
-  where ltx = RawInline (Format "sile")
-protectCode (x : xs) = x : protectCode xs
 
 setEmptyLine :: PandocMonad m => Bool -> SW m ()
 setEmptyLine b = modify $ \st -> st{ stEmptyLine = b }
