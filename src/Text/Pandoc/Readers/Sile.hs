@@ -64,11 +64,9 @@ import Text.Pandoc.Options
 import Text.Pandoc.Parsing hiding (many, optional, withRaw,
                             space, (<|>), spaces, blankline)
 import Text.Pandoc.Shared
-import Text.Pandoc.Readers.Sile.Types (ExpansionPoint(..), Tok(..),
-                            TokType(..))
+import Text.Pandoc.Readers.Sile.Types (ExpansionPoint(..), Tok(..), TokType(..))
 import Text.Pandoc.Walk
-import Text.Pandoc.Error
-   (PandocError(PandocParsecError, PandocParseError))
+import Text.Pandoc.Error (PandocError(PandocParsecError, PandocParseError))
 import Text.Parsec.Pos
 
 -- for debugging:
@@ -129,6 +127,19 @@ resolveRefs _ x = x
 --   case res of
 --        Left e  -> error (show e)
 --        Right r -> return r
+
+newtype HeaderNum = HeaderNum [Int]
+  deriving (Show)
+
+renderHeaderNum :: HeaderNum -> String
+renderHeaderNum (HeaderNum xs) =
+  intercalate "." (map show xs)
+
+incrementHeaderNum :: Int -> HeaderNum -> HeaderNum
+incrementHeaderNum level (HeaderNum ns) = HeaderNum $
+  case reverse (take level (ns ++ repeat 0)) of
+       (x:xs) -> reverse (x+1 : xs)
+       []     -> []  -- shouldn't happen
 
 data SileState = SileState{   sOptions       :: ReaderOptions
                             , sMeta          :: Meta
@@ -511,11 +522,6 @@ inlineGroup = do
           -- we need the span so we can detitlecase bibtex entries;
           -- we need to know when something is {C}apitalized
 
-doLHSverb :: PandocMonad m => SP m Inlines
-doLHSverb =
-  (codeWith ("",["haskell"],[]) . T.unpack . untokenize)
-    <$> manyTill (satisfyTok (not . isNewlineTok)) (symbol '|')
-
 mkImage :: PandocMonad m => [(String, String)] -> String -> SP m Inlines
 mkImage options src = do
    let replaceTextwidth (k,v) =
@@ -599,18 +605,6 @@ enquote = do
      then singleQuoted <$> withQuoteContext InSingleQuote tok
      else doubleQuoted <$> withQuoteContext InDoubleQuote tok
 
-dolstinline :: PandocMonad m => SP m Inlines
-dolstinline = do
-  options <- option [] keyvals
-  let classes = maybeToList $ lookup "language" options >>= fromListingsLanguage
-  Tok _ Symbol t <- anySymbol
-  marker <- case T.uncons t of
-              Just (c, ts) | T.null ts -> return c
-              _ -> mzero
-  let stopchar = if marker == '{' then '}' else marker
-  withVerbatimMode $
-    (codeWith ("",classes,[]) . T.unpack . untokenize) <$>
-      manyTill (verbTok stopchar) (symbol stopchar)
 
 keyval :: PandocMonad m => SP m (String, String)
 keyval = try $ do
@@ -771,7 +765,7 @@ inlineEnvironments = M.fromList [
   ]
 
 inlineCommands :: PandocMonad m => M.Map Text (SP m Inlines)
-inlineCommands = M.union inlineLanguageCommands $ M.fromList $
+inlineCommands = M.fromList
   [ ("em", extractSpaces emph <$> tok)
   , ("strike", extractSpaces strikeout <$> tok)
   , ("textsuperscript", extractSpaces superscript <$> tok)
@@ -846,7 +840,7 @@ isBlockCommand s =
 
 treatAsBlock :: Set.Set Text
 treatAsBlock = Set.fromList
-   , "framebreak"
+   [ "framebreak"
    , "pagebreak"
    ]
 
@@ -887,7 +881,6 @@ inline = (mempty <$ comment)
      <|> (str "’" <$ symbol '’')
      <|> (str "\160" <$ symbol '~')
      <|> dollarsMath
-     <|> (guardEnabled Ext_literate_haskell *> symbol '|' *> doLHSverb)
      <|> (str . (:[]) <$> primEscape)
      <|> regularSymbol
      <|> (do res <- symbolIn "#^'`\"[]"
@@ -918,7 +911,6 @@ end_ t = (try $ do
 preamble :: PandocMonad m => SP m Blocks
 preamble = mempty <$ many preambleBlock
   where preambleBlock =  spaces1
-                     <|> void include
                      <|> void blockCommand
                      <|> void braced
                      <|> (notFollowedBy (begin_ "document") >> void anyTok)
@@ -929,21 +921,6 @@ paragraph = do
   if x == mempty
      then return mempty
      else return $ para x
-
-include :: PandocMonad m => SP m Blocks
-include = do
-  (Tok _ (CtrlSeq name) _) <-
-                    controlSeq "include" <|> controlSeq "input" <|>
-                    controlSeq "subfile" <|> controlSeq "usepackage"
-  skipMany opt
-  fs <- (map (T.unpack . removeDoubleQuotes . T.strip) . T.splitOn "," .
-         untokenize) <$> braced
-  let fs' = if name == "usepackage"
-               then map (maybeAddExtension ".sty") fs
-               else map (maybeAddExtension ".tex") fs
-  dirs <- (splitBy (==':') . fromMaybe ".") <$> lookupEnv "TEXINPUTS"
-  mapM_ (insertIncluded dirs) fs'
-  return mempty
 
 
 addMeta :: PandocMonad m => ToMetaValue a => String -> a -> SP m ()
@@ -987,8 +964,6 @@ setCaption = do
 
 looseItem :: PandocMonad m => SP m Blocks
 looseItem = do
-  inListItem <- sInListItem <$> getState
-  guard $ not inListItem
   skipopts
   return mempty
 
@@ -1063,19 +1038,15 @@ blockCommands = M.fromList $
                       <|> (grouped block >>= addMeta "title")))
   , ("subtitle", mempty <$ (skipopts *> tok >>= addMeta "subtitle"))
   , ("author", mempty <$ (skipopts *> authors))
-  , ("chapter", updateState (\s -> s{ stateHasChapters = True })
-                      *> section nullAttr 0)
-  , ("section", section nullAttr 1)
-  , ("subsection", section nullAttr 2)
-  , ("subsubsection", section nullAttr 3)
-  , ("paragraph", section nullAttr 4)
-  , ("subparagraph", section nullAttr 5)
-  , ("hrule", pure horizontalRule)
-  , ("rule", skipopts *> tok *> tok *> pure horizontalRule)
-  , ("item", skipopts *> looseItem)
-  , ("PandocStartInclude", startInclude)
-  , ("PandocEndInclude", endInclude)
-  ]
+   , ("chapter", section False nullAttr 0)
+   , ("subsection", section False nullAttr 2)
+   , ("subsubsection", section False nullAttr 3)
+   , ("paragraph", section False nullAttr 4)
+   , ("subparagraph", section False nullAttr 5)
+   , ("hrule", pure horizontalRule)
+   , ("rule", skipopts *> tok *> tok *> pure horizontalRule)
+   , ("item", skipopts *> looseItem)
+   ]
 
 
 environments :: PandocMonad m => M.Map Text (SP m Blocks)
@@ -1085,9 +1056,7 @@ environments = M.fromList
    , ("quote", blockQuote <$> env "quote" blocks)
    , ("verse", blockQuote <$> env "verse" blocks)
    , ("listarea", bulletList <$> listenv "itemize" (many item))
-   , ("comment", mempty <$ verbEnv "comment")
    , ("obeylines", obeylines)
-   , ("align", mathEnvWith para (Just "aligned") "align")
    ]
 environment :: PandocMonad m => SP m Blocks
 environment = do
@@ -1143,10 +1112,7 @@ descItem = do
 
 listenv :: PandocMonad m => Text -> SP m a -> SP m a
 listenv name p = try $ do
-  oldInListItem <- sInListItem `fmap` getState
-  updateState $ \st -> st{ sInListItem = True }
   res <- env name p
-  updateState $ \st -> st{ sInListItem = oldInListItem }
   return res
 
 orderedList' :: PandocMonad m => SP m Blocks
@@ -1188,27 +1154,12 @@ orderedList' = try $ do
 
 
 
-startInclude :: SP Blocks
-startInclude = do
-  fn <- braced
-  setPosition $ newPos fn 1 1
-  return mempty
-
-endInclude :: SP Blocks
-endInclude = do
-  fn <- braced
-  ln <- braced
-  co <- braced
-  setPosition $ newPos fn (fromMaybe 1 $ safeRead ln) (fromMaybe 1 $ safeRead co)
-  return mempty
-
 
 
 
 block :: PandocMonad m => SP m Blocks
 block = (mempty <$ spaces1)
     <|> environment
-    <|> include
     <|> blockCommand
     <|> paragraph
     <|> grouped block
