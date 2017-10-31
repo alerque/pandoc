@@ -63,8 +63,7 @@ import Text.Pandoc.Readers.HTML (htmlInBalanced, htmlTag, isBlockTag,
                                  isCommentTag, isInlineTag, isTextTag)
 import Text.Pandoc.Readers.LaTeX (rawLaTeXBlock,
                                   rawLaTeXInline, applyMacros)
-import Text.Pandoc.Readers.Sile (rawSileBlock,
-                                  rawSileInline, applyMacros)
+import Text.Pandoc.Readers.Sile (rawSileBlock, rawSileInline)
 import Text.Pandoc.Shared
 import qualified Text.Pandoc.UTF8 as UTF8
 import Text.Pandoc.XML (fromEntities)
@@ -505,6 +504,7 @@ block = do
                , htmlBlock
                , table
                , codeBlockIndented
+               , rawSilBlock
                , rawTeXBlock
                , lineBlock
                , blockQuote
@@ -1095,6 +1095,15 @@ rawVerbatimBlock = htmlInBalanced isVerbTag
         isVerbTag (TagOpen "style" _)  = True
         isVerbTag (TagOpen "script" _) = True
         isVerbTag _                    = False
+
+rawSilBlock :: PandocMonad m => MarkdownParser m (F Blocks)
+rawSilBlock = do
+  guardEnabled Ext_raw_sile
+  result <- (B.rawBlock "sile" . concat <$>
+                  rawSileBlock `sepEndBy1` blankline)
+
+  optional blanklines
+  return $ return result
 
 rawTeXBlock :: PandocMonad m => MarkdownParser m (F Blocks)
 rawTeXBlock = do
@@ -1887,7 +1896,7 @@ rawLaTeXInline' = try $ do
   s <- rawLaTeXInline
   return $ return $ B.rawInline "tex" s -- "tex" because it might be context
 
-rawLaTeXInline' :: PandocMonad m => MarkdownParser m (F Inlines)
+rawSileInline' :: PandocMonad m => MarkdownParser m (F Inlines)
 rawSileInline' = try $ do
   guardEnabled Ext_raw_sile
   lookAhead (char '\\')
