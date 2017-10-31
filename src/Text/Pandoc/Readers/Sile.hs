@@ -43,22 +43,17 @@ import Control.Applicative (many, optional, (<|>))
 import Control.Monad
 import Control.Monad.Except (throwError)
 import Control.Monad.Trans (lift)
-import Data.Char (chr, isAlphaNum, isLetter, ord, isDigit, toLower)
+import Data.Char (chr, isAlphaNum, isLetter, ord, isDigit)
 import Data.Default
 import Data.Text (Text)
 import qualified Data.Text as T
-import Data.List (intercalate, isPrefixOf)
+import Data.List (intercalate)
 import qualified Data.Map as M
 import qualified Data.Set as Set
-import Data.Maybe (fromMaybe, maybeToList)
+import Data.Maybe (fromMaybe)
 import Safe (minimumDef)
-import System.FilePath (addExtension, replaceExtension, takeExtension)
 import Text.Pandoc.Builder
-import Text.Pandoc.Class (PandocMonad, PandocPure, lookupEnv,
-                          readFileFromDirs, report, setResourcePath,
-                          getResourcePath, setTranslations, translateTerm)
-import qualified Text.Pandoc.Translations as Translations
-import Text.Pandoc.ImageSize (numUnit, showFl)
+import Text.Pandoc.Class (PandocMonad, PandocPure, report)
 import Text.Pandoc.Logging
 import Text.Pandoc.Options
 import Text.Pandoc.Parsing hiding (many, optional, withRaw,
@@ -222,7 +217,7 @@ rawSileParser parser = do
             lstate "source" toks
   case res of
        Left _    -> mzero
-       Right (raw, st) -> do
+       Right (raw, _) -> do
          takeP (T.length (untokenize raw))
 
 rawSileBlock :: (PandocMonad m, HasReaderOptions s)
@@ -252,7 +247,7 @@ inlineCommand = do
   res <- runParserT rawinline lstate "source" toks
   case res of
        Left _ -> mzero
-       Right (il, raw, s) -> do
+       Right (il, raw, _) -> do
          takeP (T.length (untokenize raw))
          return il
 
