@@ -608,9 +608,18 @@ inlineToSile (Code (_,_,_) str) = do
                           $ stringToSile CodeString str
            where
              escapeSpaces =  concatMap (\c -> if c == ' ' then "\\ " else [c])
-inlineToSile (Quoted _ lst) = do
+inlineToSile (Quoted SingleQuote lst) = do
+  opts <- gets stOptions
   contents <- inlineListToSile lst
-  return $ "\\quote" <> braces contents
+  return $ if isEnabled Ext_smart opts
+              then "'" <> contents <> "'"
+              else "‘" <> contents <> "’"
+inlineToSile (Quoted DoubleQuote lst) = do
+  opts <- gets stOptions
+  contents <- inlineListToSile lst
+  return $ if isEnabled Ext_smart opts
+              then "\"" <> contents <> "\""
+              else "“" <> contents <> "”"
 inlineToSile (Str str) = liftM text $ stringToSile TextString str
 inlineToSile (Math InlineMath str) =
   return $ "\\(" <> text str <> "\\)"
