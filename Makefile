@@ -14,7 +14,7 @@ sile_install: $(HOME)/.local/bin/pandoc quick
 	sudo cp $< /usr/local/bin/
 
 quick:
-	stack install --resolver=$(RESOLVER) --ghc-options='$(GHCOPTS)' --install-ghc --flag 'pandoc:embed_data_files' --fast --test --test-arguments='-j4 --hide-successes $(TESTARGS)'
+	stack install --resolver=$(RESOLVER) --ghc-options='$(GHCOPTS)' --install-ghc --flag 'pandoc:embed_data_files' --fast
 
 quick-cabal:
 	cabal new-configure . --ghc-options '$(GHCOPTS)' --flags '+embed_data_files' --enable-tests
