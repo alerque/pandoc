@@ -2,8 +2,8 @@ version?=$(shell grep '^[Vv]ersion:' pandoc.cabal | awk '{print $$2;}')
 pandoc=$(shell find dist -name pandoc -type f -exec ls -t {} \; | head -1)
 SOURCEFILES?=$(shell find pandoc.hs src test -name '*.hs')
 BRANCH?=master
-RESOLVER=nightly-2017-10-22
-GHCOPTS=-fdiagnostics-color=always -Wall -fno-warn-unused-do-bind -Wincomplete-record-updates -Wnoncanonical-monad-instances -Wnoncanonical-monadfail-instances
+RESOLVER=lts-9.11
+GHCOPTS=-Wall -fno-warn-unused-do-bind -Wincomplete-record-updates -Wnoncanonical-monad-instances -Wnoncanonical-monadfail-instances
 
 sile_install: $(HOME)/.local/bin/pandoc quick
 	sudo cp $< /usr/local/bin/
