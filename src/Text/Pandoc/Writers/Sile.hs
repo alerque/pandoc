@@ -602,12 +602,8 @@ inlineToSile (Cite cits lst) = do
      Biblatex -> citationsToBiblatex cits
      _        -> inlineListToSile lst
 
-inlineToSile (Code (_,_,_) str) = do
-  rawCode
-    where rawCode = liftM (text . (\s -> "\\tt{" ++ escapeSpaces s ++ "}"))
-                          $ stringToSile CodeString str
-           where
-             escapeSpaces =  concatMap (\c -> if c == ' ' then "\\ " else [c])
+inlineToSile (Code (_,_,_) str) =
+  return $ "\\code{" <> text str <> "}"
 inlineToSile (Quoted SingleQuote lst) = do
   opts <- gets stOptions
   contents <- inlineListToSile lst
