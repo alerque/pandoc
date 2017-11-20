@@ -350,8 +350,8 @@ blockToSile (DefinitionList []) = return empty
 blockToSile (DefinitionList lst) = do
   items <- mapM defListItemToSile lst
   let spacing = if all isTightList (map snd lst)
-                   then text "tight=true"
-                   else text "tight=false"
+                   then text "tight=true,definition=true"
+                   else text "tight=false,definition=true"
   return $ "\\begin" <> brackets spacing <> braces "listarea"
          $$ vcat items
          $$ "\\end" <> braces "listarea"
@@ -484,9 +484,9 @@ defListItemToSile (term, defs) = do
     def'  <- liftM vsep $ mapM blockListToSile defs
     return $ case defs of
      (((Header _ _ _) : _) : _) ->
-       "\\listitem" <> brackets term' <> " ~ " $$ def'
+       "\\listitem" <> braces term' <> " ~ " $$ def'
      _                          ->
-       "\\listitem" <> brackets term' $$ def'
+       "\\listitem" <> braces term' $$ def'
 
 -- | Craft the section header, inserting the secton reference, if supplied.
 sectionHeader :: PandocMonad m
