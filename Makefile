@@ -7,8 +7,12 @@ GHCOPTS=-fdiagnostics-color=always
 WEBSITE=../../web/pandoc.org
 REVISION?=1
 
-sile_install: $(HOME)/.local/bin/pandoc quick
+sile_install: /usr/local/bin/pandoc
+
+/usr/local/bin/pandoc: $(HOME)/.local/bin/pandoc
 	sudo cp $< /usr/local/bin/
+
+$(HOME)/.local/bin/pandoc: quick
 
 quick:
 	stack install --ghc-options='$(GHCOPTS)' --install-ghc --flag 'pandoc:embed_data_files' --fast
