@@ -10,8 +10,12 @@ GHCOPTS=-fdiagnostics-color=always -Wall -fno-warn-unused-do-bind -Wincomplete-r
 # -Wredundant-constraints (problematic if we want to support older base)
 WEBSITE=../../web/pandoc.org
 
-sile_install: $(HOME)/.local/bin/pandoc quick
+sile_install: /usr/local/bin/pandoc
+
+/usr/local/bin/pandoc: $(HOME)/.local/bin/pandoc
 	sudo cp $< /usr/local/bin/
+
+$(HOME)/.local/bin/pandoc: quick
 
 quick:
 	stack install --resolver=$(RESOLVER) --ghc-options='$(GHCOPTS)' --install-ghc --flag 'pandoc:embed_data_files' --fast
