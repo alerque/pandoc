@@ -5,8 +5,12 @@ BRANCH?=master
 RESOLVER=lts-9.11
 GHCOPTS=-Wall -fno-warn-unused-do-bind -Wincomplete-record-updates -Wnoncanonical-monad-instances -Wnoncanonical-monadfail-instances
 
-sile_install: $(HOME)/.local/bin/pandoc quick
+sile_install: /usr/local/bin/pandoc
+
+/usr/local/bin/pandoc: $(HOME)/.local/bin/pandoc
 	sudo cp $< /usr/local/bin/
+
+$(HOME)/.local/bin/pandoc: quick
 
 quick:
 	stack install --resolver=$(RESOLVER) --ghc-options='$(GHCOPTS)' --install-ghc --flag 'pandoc:embed_data_files' --fast
