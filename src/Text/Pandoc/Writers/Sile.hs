@@ -254,21 +254,6 @@ blockToSile (Div (identifier,_,_) bs) = do
   return (linkAnchor $$ contents)
 blockToSile (Plain lst) =
   inlineListToSile $ dropWhile isLineBreakOrSpace lst
--- title beginning with fig: indicates that the image is a figure
-blockToSile (Para [Image attr@(ident, _, _) txt (src,'f':'i':'g':':':tit)]) = do
-  capt <- inlineListToSile txt
-  notes <- gets stNotes
-  captForLof <- if null notes
-                   then return empty
-                   else brackets <$> inlineListToSile (walk deNote txt)
-  img <- inlineToSile (Image attr txt (src,tit))
-  let footnotes = notesToSile notes
-  lab <- labelFor ident
-  let caption = "\\caption" <> captForLof <> braces capt <> lab
-  let figure = cr <> "\\begin{figure}" $$ "\\centering" $$ img $$
-              caption $$ "\\end{figure}" <> cr
-  figure' <- hypertarget True ident figure
-  return $ figure' $$ footnotes
 blockToSile (Para [Str ".",Space,Str ".",Space,Str "."]) = do
   inlineListToSile [Str ".",Space,Str ".",Space,Str "."]
 blockToSile (Para lst) =
