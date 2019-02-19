@@ -627,7 +627,7 @@ inlineToSile (Link _ txt ('#':ident, _)) = do
   contents <- inlineListToSile txt
   lab <- toLabel ident
   return $ text "\\pdf:link" <> brackets ("dest=" <> text lab) <> braces contents
-inlineToSile (Link _ txt (src, tit)) =
+inlineToSile (Link (_,_,keyvalAttr) txt (src, tit)) =
   case txt of
         [Str x] | escapeURI x == src ->  -- autolink
              do modify $ \s -> s{ stUrl = True }
@@ -641,12 +641,18 @@ inlineToSile (Link _ txt (src, tit)) =
                 return $ "\\href" <> braces (text src') <>
                    braces ("\\url" <> braces contents)
         _ -> do contents <- inlineListToSile txt
-                let linktitle = if null tit
-                                then ""
-                                else ",title=\"" ++ tit ++ "\""
                 src' <- stringToSile URLString (escapeURI src)
-                return $ text ("\\href[src=\"" ++ src' ++ "\"" ++ linktitle ++ "]{") <>
-                         contents <> char '}'
+                let params = (["src=\"" ++ src' ++ "\""]) ++
+                              (if null tit
+                                then []
+                                else [ "title=\"" ++ tit ++ "\"" ]) ++
+                              (if null keyvalAttr
+                                  then []
+                                  else [ key ++ "=\"" ++ val ++ "\"" | (key, val) <- keyvalAttr ])
+                    linkattrs
+                      | null params = empty
+                      | otherwise = brackets $ hcat (intersperse "," (map text params))
+                return $ "\\href" <> linkattrs <> braces contents
 inlineToSile il@(Image _ _ ('d':'a':'t':'a':':':_, _)) = do
   report $ InlineNotRendered il
   return empty
