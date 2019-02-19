@@ -455,18 +455,6 @@ tableCellToSile header (width, align, blocks) = do
             (halign <> "\\strut" <> cr <> cellContents <> cr) <>
             "\\strut\\end{minipage}")
 
-notesToSile :: [Doc] -> Doc
-notesToSile [] = empty
-notesToSile ns = (case length ns of
-                              n | n > 1 -> "\\addtocounter" <>
-                                           braces "footnote" <>
-                                           braces (text $ show $ 1 - n)
-                                | otherwise -> empty)
-                   $$
-                   vcat (intersperse
-                     ("\\addtocounter" <> braces "footnote" <> braces "1")
-                     $ map (\x -> "\\footnotetext" <> braces x)
-                     $ reverse ns)
 
 listItemToSile :: PandocMonad m => [Block] -> LW m Doc
 listItemToSile lst = do
@@ -524,22 +512,6 @@ sectionHeader unnumbered ident level lst = do
   return $ if level' > 5
               then txt
               else headerWith ('\\':sectionType) stuffing
-
-hypertarget :: PandocMonad m => Bool -> String -> Doc -> LW m Doc
-hypertarget _ "" x    = return x
-hypertarget addnewline ident x = do
-  ref <- text `fmap` toLabel ident
-  return $ text "\\hypertarget"
-              <> braces ref
-              <> braces ((if addnewline && not (isEmpty x)
-                             then ("%" <> cr)
-                             else empty) <> x)
-
-labelFor :: PandocMonad m => String -> LW m Doc
-labelFor ""    = return empty
-labelFor ident = do
-  ref <- text `fmap` toLabel ident
-  return $ text "\\label" <> braces ref
 
 -- | Convert list of inline elements to Sile.
 inlineListToSile :: PandocMonad m
