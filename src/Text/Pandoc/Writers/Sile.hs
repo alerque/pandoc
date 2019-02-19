@@ -103,10 +103,10 @@ writeSile options document =
   evalStateT (pandocToSile options document) $
     startingState options
 
-type SW m = StateT WriterState m
+type LW m = StateT WriterState m
 
 pandocToSile :: PandocMonad m
-              => WriterOptions -> Pandoc -> SW m Text
+              => WriterOptions -> Pandoc -> LW m Text
 pandocToSile options (Pandoc meta blocks) = do
   -- Strip off final 'references' header if --natbib or --biblatex
   let method = writerCiteMethod options
@@ -201,7 +201,7 @@ pandocToSile options (Pandoc meta blocks) = do
        Just tpl -> renderTemplate' tpl context
 
 -- | Convert Elements to Sile
-elementToSile :: PandocMonad m => WriterOptions -> Element -> SW m Doc
+elementToSile :: PandocMonad m => WriterOptions -> Element -> LW m Doc
 elementToSile _ (Blk block) = blockToSile block
 elementToSile opts (Sec level _ (id',classes,_) title' elements) = do
   modify $ \s -> s{stInHeading = True}
@@ -216,7 +216,7 @@ data StringContext = TextString
                    deriving (Eq)
 
 -- escape things as needed for Sile
-stringToSile :: PandocMonad m => StringContext -> String -> SW m String
+stringToSile :: PandocMonad m => StringContext -> String -> LW m String
 stringToSile  _     []     = return ""
 stringToSile  ctx (x:xs) = do
   rest <- stringToSile ctx xs
@@ -230,7 +230,7 @@ stringToSile  ctx (x:xs) = do
            | otherwise -> "\\\\" ++ rest
        _        -> x : rest
 
-toLabel :: PandocMonad m => String -> SW m String
+toLabel :: PandocMonad m => String -> LW m String
 toLabel z = go `fmap` stringToSile URLString z
  where go [] = ""
        go (x:xs)
@@ -252,7 +252,7 @@ isLineBreakOrSpace _         = False
 -- | Convert Pandoc block element to Sile.
 blockToSile :: PandocMonad m
              => Block     -- ^ Block to convert
-             -> SW m Doc
+             -> LW m Doc
 blockToSile Null = return empty
 blockToSile (Div (identifier,_,_) bs) = do
   ref <- toLabel identifier
@@ -396,7 +396,7 @@ toColDescriptor align =
          AlignCenter  -> "c"
          AlignDefault -> "l"
 
-blockListToSile :: PandocMonad m => [Block] -> SW m Doc
+blockListToSile :: PandocMonad m => [Block] -> LW m Doc
 blockListToSile lst =
   vsep `fmap` mapM (\b -> setEmptyLine True >> blockToSile b) lst
 
@@ -405,7 +405,7 @@ tableRowToSile :: PandocMonad m
                 -> [Alignment]
                 -> [Double]
                 -> [[Block]]
-                -> SW m Doc
+                -> LW m Doc
 tableRowToSile header aligns widths cols = do
   -- scale factor compensates for extra space between columns
   -- so the whole table isn't larger than columnwidth
@@ -439,7 +439,7 @@ displayMathToInline (Math DisplayMath x) = Math InlineMath x
 displayMathToInline x                    = x
 
 tableCellToSile :: PandocMonad m => Bool -> (Double, Alignment, [Block])
-                 -> SW m Doc
+                 -> LW m Doc
 tableCellToSile _      (0,     _,     blocks) =
   blockListToSile $ walk fixLineBreaks $ walk displayMathToInline blocks
 tableCellToSile header (width, align, blocks) = do
@@ -468,11 +468,11 @@ notesToSile ns = (case length ns of
                      $ map (\x -> "\\footnotetext" <> braces x)
                      $ reverse ns)
 
-listItemToSile :: PandocMonad m => [Block] -> SW m Doc
+listItemToSile :: PandocMonad m => [Block] -> LW m Doc
 listItemToSile lst = do
   blockListToSile lst >>= return . (inCmd "listitem")
 
-defListItemToSile :: PandocMonad m => ([Inline], [[Block]]) -> SW m Doc
+defListItemToSile :: PandocMonad m => ([Inline], [[Block]]) -> LW m Doc
 defListItemToSile (term, defs) = do
     term' <- inlineListToSile term
     def'  <- liftM vsep $ mapM blockListToSile defs
@@ -488,7 +488,7 @@ sectionHeader :: PandocMonad m
               -> [Char]
               -> Int
               -> [Inline]
-              -> SW m Doc
+              -> LW m Doc
 sectionHeader unnumbered ident level lst = do
   txt <- inlineListToSile lst
   lab <- text `fmap` toLabel ident
@@ -525,7 +525,7 @@ sectionHeader unnumbered ident level lst = do
               then txt
               else headerWith ('\\':sectionType) stuffing
 
-hypertarget :: PandocMonad m => Bool -> String -> Doc -> SW m Doc
+hypertarget :: PandocMonad m => Bool -> String -> Doc -> LW m Doc
 hypertarget _ "" x    = return x
 hypertarget addnewline ident x = do
   ref <- text `fmap` toLabel ident
@@ -535,7 +535,7 @@ hypertarget addnewline ident x = do
                              then ("%" <> cr)
                              else empty) <> x)
 
-labelFor :: PandocMonad m => String -> SW m Doc
+labelFor :: PandocMonad m => String -> LW m Doc
 labelFor ""    = return empty
 labelFor ident = do
   ref <- text `fmap` toLabel ident
@@ -544,7 +544,7 @@ labelFor ident = do
 -- | Convert list of inline elements to Sile.
 inlineListToSile :: PandocMonad m
                   => [Inline]  -- ^ Inlines to convert
-                  -> SW m Doc
+                  -> LW m Doc
 inlineListToSile lst =
   mapM inlineToSile (fixLineInitialSpaces lst)
     >>= return . hcat
@@ -562,7 +562,7 @@ inlineListToSile lst =
 -- | Convert inline element to Sile
 inlineToSile :: PandocMonad m
               => Inline    -- ^ Inline to convert
-              -> SW m Doc
+              -> LW m Doc
 inlineToSile (Span (id',classes,_) ils) = do
   ref <- toLabel id'
   let linkAnchor = if null id'
@@ -682,10 +682,10 @@ inlineToSile (Note contents) = do
   let noteContents = nest 2 contents' <> optnl
   return $ "\\footnote" <> braces noteContents
 
-setEmptyLine :: PandocMonad m => Bool -> SW m ()
+setEmptyLine :: PandocMonad m => Bool -> LW m ()
 setEmptyLine b = modify $ \st -> st{ stEmptyLine = b }
 
-citationsToNatbib :: PandocMonad m => [Citation] -> SW m Doc
+citationsToNatbib :: PandocMonad m => [Citation] -> LW m Doc
 citationsToNatbib (one:[])
   = citeCommand c p s k
   where
@@ -733,13 +733,13 @@ citationsToNatbib cits = do
                NormalCitation -> citeCommand "citealp"  p s k
 
 citeCommand :: PandocMonad m
-            => String -> [Inline] -> [Inline] -> String -> SW m Doc
+            => String -> [Inline] -> [Inline] -> String -> LW m Doc
 citeCommand c p s k = do
   args <- citeArguments p s k
   return $ text ("\\" ++ c) <> args
 
 citeArguments :: PandocMonad m
-              => [Inline] -> [Inline] -> String -> SW m Doc
+              => [Inline] -> [Inline] -> String -> LW m Doc
 citeArguments p s k = do
   let s' = case s of
         (Str (x:[]) : r) | isPunctuation x -> dropWhile (== Space) r
@@ -753,7 +753,7 @@ citeArguments p s k = do
                      (_   , _    ) -> brackets pdoc <> brackets sdoc
   return $ optargs <> braces (text k)
 
-citationsToBiblatex :: PandocMonad m => [Citation] -> SW m Doc
+citationsToBiblatex :: PandocMonad m => [Citation] -> LW m Doc
 citationsToBiblatex (one:[])
   = citeCommand cmd p s k
     where
