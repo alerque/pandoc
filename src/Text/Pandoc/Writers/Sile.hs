@@ -34,15 +34,22 @@ Conversion of 'Pandoc' format into Sile.
 module Text.Pandoc.Writers.Sile (
     writeSile
   ) where
+import Prelude
 import Control.Applicative ((<|>))
 import Control.Monad.State.Strict
-import Data.Char (isAscii, isDigit, isLetter, isPunctuation, ord)
-import Data.List (foldl', intercalate, intersperse, stripPrefix)
-import Data.Maybe (catMaybes, isJust)
+import Data.Aeson (FromJSON, object, (.=))
+import Data.Char (isAlphaNum, isAscii, isDigit, isLetter, isPunctuation, ord,
+                  toLower)
+import Data.List (foldl', intercalate, intersperse, isInfixOf, nubBy,
+                  stripPrefix, (\\), uncons)
+import Data.Maybe (catMaybes, fromMaybe, isJust, mapMaybe, isNothing)
+import qualified Data.Map as M
 import Data.Text (Text)
+import qualified Data.Text as T
 import Network.URI (unEscapeString)
-import Text.Pandoc.Class (PandocMonad, report)
+import Text.Pandoc.Class (PandocMonad, report, toLang)
 import Text.Pandoc.Definition
+import Text.Pandoc.ImageSize
 import Text.Pandoc.Logging
 import Text.Pandoc.Options
 import Text.Pandoc.Pretty
@@ -52,12 +59,13 @@ import Text.Pandoc.Walk
 import Text.Pandoc.Writers.Shared
 import qualified Text.Parsec as P
 import Text.Printf (printf)
+import qualified Data.Text.Normalize as Normalize
 
 data WriterState =
   WriterState {
                 stInQuote       :: Bool          -- true if in a blockquote
               , stInHeading     :: Bool          -- true if in a section heading
-              , stNotes         :: [Doc]         -- notes
+              , stInItem        :: Bool          -- true if in \item[..]
               , stOLLevel       :: Int           -- level of ordered list nesting
               , stOptions       :: WriterOptions -- writer options, so they don't have to be parameter
               , stTable         :: Bool          -- true if document has a table
@@ -74,7 +82,7 @@ startingState :: WriterOptions -> WriterState
 startingState options = WriterState {
                   stInQuote = False
                 , stInHeading = False
-                , stNotes = []
+                , stInItem = False
                 , stOLLevel = 1
                 , stOptions = options
                 , stTable = False
@@ -82,10 +90,10 @@ startingState options = WriterState {
                 , stUrl = False
                 , stGraphics = False
                 , stLHS = False
-                , stBook = (case writerTopLevelDivision options of
-                                 TopLevelPart    -> True
-                                 TopLevelChapter -> True
-                                 _               -> False)
+                , stBook = case writerTopLevelDivision options of
+                                TopLevelPart    -> True
+                                TopLevelChapter -> True
+                                _               -> False
                 , stInternalLinks = []
                 , stEmptyLine = True }
 
