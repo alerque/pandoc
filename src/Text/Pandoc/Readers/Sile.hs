@@ -1,7 +1,9 @@
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE PatternGuards         #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
 {-
 Copyright (C) 2006-2018 John MacFarlane <jgm@berkeley.edu>
 
@@ -46,9 +48,14 @@ import Control.Monad
 import Control.Monad.Except (throwError)
 import Data.Char (isDigit, isLetter, toLower, toUpper)
 import Data.Default
+import Data.List (intercalate, isPrefixOf)
+import qualified Data.Map as M
+import Data.Maybe (fromMaybe, maybeToList)
+import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as T
 import Safe (minimumDef)
+import System.FilePath (addExtension, replaceExtension, takeExtension)
 import Text.Pandoc.Builder
 import Text.Pandoc.Class (PandocMonad, PandocPure, getResourcePath, lookupEnv,
                           readFileFromDirs, report, setResourcePath,
@@ -59,11 +66,14 @@ import Text.Pandoc.Logging
 import Text.Pandoc.Options
 import Text.Pandoc.Parsing hiding (blankline, many, mathDisplay, mathInline,
                             optional, space, spaces, withRaw, (<|>))
+import Text.Pandoc.Readers.Sile.Types (ExpansionPoint (..), Macro (..),
+                                        ArgSpec (..), Tok (..), TokType (..))
+-- import Text.Pandoc.Readers.Sile.Parsing
 import Text.Pandoc.Shared
-import Text.Pandoc.Readers.Sile.Types (Tok(..), TokType(..))
+import qualified Text.Pandoc.Translations as Translations
 import Text.Pandoc.Walk
-import Text.Pandoc.Error (PandocError(PandocParsecError))
-import Text.Parsec.Pos
+import qualified Text.Pandoc.Builder as B
+import qualified Data.Text.Normalize as Normalize
 
 -- for debugging:
 -- import Text.Pandoc.Extensions (getDefaultExtensions)
@@ -251,82 +261,6 @@ inlineCommand = do
        Right (il, raw, _) -> do
          takeP (T.length (untokenize raw))
          return il
-
-tokenize :: SourceName -> Text -> [Tok]
-tokenize sourcename = totoks (initialPos sourcename)
-
-totoks :: SourcePos -> Text -> [Tok]
-totoks pos t =
-  case T.uncons t of
-       Nothing        -> []
-       Just (c, rest)
-         | c == '\n' ->
-           Tok pos Newline "\n"
-           : totoks (setSourceColumn (incSourceLine pos 1) 1) rest
-         | isSpaceOrTab c ->
-           let (sps, rest') = T.span isSpaceOrTab t
-           in  Tok pos Spaces sps
-               : totoks (incSourceColumn pos (T.length sps))
-                 rest'
-         | isAlphaNum c ->
-           let (ws, rest') = T.span isAlphaNum t
-           in  Tok pos Word ws
-               : totoks (incSourceColumn pos (T.length ws)) rest'
-         | c == '%' ->
-           let (cs, rest') = T.break (== '\n') rest
-           in  Tok pos Comment ("%" <> cs)
-               : totoks (incSourceColumn pos (1 + T.length cs)) rest'
-         | c == '\\' ->
-           case T.uncons rest of
-                Nothing -> [Tok pos Symbol (T.singleton c)]
-                Just (d, rest')
-                  | isLetterOrAt d ->
-                      -- \makeatletter is common in macro defs;
-                      -- ideally we should make tokenization sensitive
-                      -- to \makeatletter and \makeatother, but this is
-                      -- probably best for now
-                      let (ws, rest'') = T.span isLetterOrAt rest
-                          (ss, rest''') = T.span isSpaceOrTab rest''
-                      in  Tok pos (CtrlSeq ws) ("\\" <> ws <> ss)
-                          : totoks (incSourceColumn pos
-                               (1 + T.length ws + T.length ss)) rest'''
-                  | d == '\t' || d == '\n' ->
-                      Tok pos Symbol ("\\")
-                      : totoks (incSourceColumn pos 1) rest
-                  | otherwise  ->
-                      Tok pos (CtrlSeq (T.singleton d)) (T.pack [c,d])
-                      : totoks (incSourceColumn pos 2) rest'
-         | c == '#' ->
-           let (t1, t2) = T.span (\d -> d >= '0' && d <= '9') rest
-           in  case safeRead (T.unpack t1) of
-                    Just i ->
-                       Tok pos (Arg i) ("#" <> t1)
-                       : totoks (incSourceColumn pos (1 + T.length t1)) t2
-                    Nothing ->
-                       Tok pos Symbol ("#")
-                       : totoks (incSourceColumn pos 1) t2
-         | c == '^' ->
-           case T.uncons rest of
-                Just ('^', rest') ->
-                  case T.uncons rest' of
-                       Just (d, rest'')
-                         | isLowerHex d ->
-                           case T.uncons rest'' of
-                                Just (e, rest''') | isLowerHex e ->
-                                  Tok pos Esc2 (T.pack ['^','^',d,e])
-                                  : totoks (incSourceColumn pos 4) rest'''
-                                _ ->
-                                  Tok pos Esc1 (T.pack ['^','^',d])
-                                  : totoks (incSourceColumn pos 3) rest''
-                         | d < '\128' ->
-                                  Tok pos Esc1 (T.pack ['^','^',d])
-                                  : totoks (incSourceColumn pos 3) rest''
-                       _ -> [Tok pos Symbol ("^"),
-                             Tok (incSourceColumn pos 1) Symbol ("^")]
-                _ -> Tok pos Symbol ("^")
-                     : totoks (incSourceColumn pos 1) rest
-         | otherwise ->
-           Tok pos Symbol (T.singleton c) : totoks (incSourceColumn pos 1) rest
 
 isSpaceOrTab :: Char -> Bool
 isSpaceOrTab ' '  = True
@@ -578,47 +512,38 @@ inlineCommand' = try $ do
   lookupListDefault raw names inlineCommands
 
 tok :: PandocMonad m => LP m Inlines
-tok = grouped inline <|> inlineCommand' <|> singleChar'
+tok = try $ spaces >> grouped inline <|> inlineCommand' <|> singleChar'
   where singleChar' = do
           Tok _ _ t <- singleChar
           return (str (T.unpack t))
 
-singleChar :: PandocMonad m => LP m Tok
-singleChar = try $ do
-  Tok pos toktype t <- satisfyTok (tokTypeIn [Word, Symbol])
-  guard $ not $ toktype == Symbol &&
-                T.any (`Set.member` specialChars) t
-  if T.length t > 1
-     then do
-       let (t1, t2) = (T.take 1 t, T.drop 1 t)
-       inp <- getInput
-       setInput $ (Tok (incSourceColumn pos 1) toktype t2) : inp
-       return $ Tok pos toktype t1
-     else return $ Tok pos toktype t
+opt :: PandocMonad m => LP m Inlines
+opt = bracketed inline <|> (str . T.unpack <$> rawopt)
 
+paropt :: PandocMonad m => LP m Inlines
+paropt = parenWrapped inline
 
 rawopt :: PandocMonad m => LP m Text
-rawopt = do
+rawopt = try $ do
+  optional sp
   inner <- untokenize <$> bracketedToks
   optional sp
   return $ "[" <> inner <> "]"
 
 skipopts :: PandocMonad m => LP m ()
-skipopts = skipMany rawopt
+skipopts = skipMany (overlaySpecification <|> void rawopt)
 
-ignore :: (Monoid a, PandocMonad m) => String -> ParserT s u m a
-ignore raw = do
-  pos <- getPosition
-  report $ SkippedContent raw pos
-  return mempty
+overlayTok :: PandocMonad m => LP m Tok
+overlayTok =
+  satisfyTok (\t ->
+                  case t of
+                    Tok _ Word _       -> True
+                    Tok _ Spaces _     -> True
+                    Tok _ Symbol c     -> c `elem` ["-","+","@","|",":",","]
+                    _                  -> False)
 
-withRaw :: PandocMonad m => LP m a -> LP m (a, [Tok])
-withRaw parser = do
-  inp <- getInput
-  result <- parser
-  nxt <- option (Tok (initialPos "source") Word "") (lookAhead anyTok)
-  let raw = takeWhile (/= nxt) inp
-  return (result, raw)
+inBrackets :: Inlines -> Inlines
+inBrackets x = str "[" <> x <> str "]"
 
 
 unescapeURL :: String -> String
@@ -857,11 +782,14 @@ environments = M.fromList
    , ("obeylines", obeylines)
    ]
 environment :: PandocMonad m => LP m Blocks
-environment = do
+environment = try $ do
   controlSeq "begin"
   name <- untokenize <$> braced
-  M.findWithDefault mzero name environments
-    <|> rawEnv name
+  M.findWithDefault mzero name environments <|>
+    if M.member name (inlineEnvironments
+                       :: M.Map Text (LP PandocPure Inlines))
+       then mzero
+       else rawEnv name
 
 env :: PandocMonad m => Text -> LP m a -> LP m a
 env name p = p <* end_ name
@@ -899,6 +827,15 @@ obeylines = do
 item :: PandocMonad m => LP m Blocks
 item = void blocks *> controlSeq "item" *> skipopts *> blocks
 
+descItem :: PandocMonad m => LP m (Inlines, [Blocks])
+descItem = do
+  blocks -- skip blocks before item
+  controlSeq "item"
+  optional sp
+  ils <- opt
+  bs <- blocks
+  return (ils, [bs])
+
 listenv :: PandocMonad m => Text -> LP m a -> LP m a
 listenv name p = try $ do
   res <- env name p
@@ -912,11 +849,14 @@ listenv name p = try $ do
 
 
 block :: PandocMonad m => LP m Blocks
-block = (mempty <$ spaces1)
+block = do
+  res <- (mempty <$ spaces1)
     <|> environment
     <|> blockCommand
     <|> paragraph
     <|> grouped block
+  trace (take 60 $ show $ B.toList res)
+  return res
 
 blocks :: PandocMonad m => LP m Blocks
 blocks = mconcat <$> many block
