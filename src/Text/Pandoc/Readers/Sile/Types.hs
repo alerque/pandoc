@@ -1,5 +1,6 @@
+{-# LANGUAGE NoImplicitPrelude #-}
 {-
-Copyright (C) 2017 John MacFarlane <jgm@berkeley.edu>
+Copyright (C) 2017-2018 John MacFarlane <jgm@berkeley.edu>
 
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -18,7 +19,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 {- |
    Module      : Text.Pandoc.Readers.Sile.Types
-   Copyright   : Copyright (C) 2015-2017 Caleb Maclennan
+   Copyright   : Copyright (C) 2015-2018 Caleb Maclennan
    License     : GNU GPL, version 2 or above
 
    Maintainer  : Caleb Maclennan <caleb@alerque.com>
@@ -29,9 +30,13 @@ Types for Sile tokens and macros.
 -}
 module Text.Pandoc.Readers.Sile.Types ( Tok(..)
                                        , TokType(..)
+                                       , Macro(..)
+                                       , ArgSpec(..)
+                                       , ExpansionPoint(..)
                                        , SourcePos
                                        )
 where
+import Prelude
 import Data.Text (Text)
 import Text.Parsec.Pos (SourcePos)
 
@@ -41,3 +46,12 @@ data TokType = CtrlSeq Text | Spaces | Newline | Symbol | Word | Comment |
 
 data Tok = Tok SourcePos TokType Text
      deriving (Eq, Ord, Show)
+
+data ExpansionPoint = ExpandWhenDefined | ExpandWhenUsed
+     deriving (Eq, Ord, Show)
+
+data Macro = Macro ExpansionPoint [ArgSpec] (Maybe [Tok]) [Tok]
+     deriving Show
+
+data ArgSpec = ArgNum Int | Pattern [Tok]
+     deriving Show
