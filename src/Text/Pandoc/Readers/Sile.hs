@@ -1,10 +1,9 @@
-{-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE PatternGuards       #-}
-{-# LANGUAGE FlexibleInstances   #-}
+{-# LANGUAGE NoImplicitPrelude #-}
+{-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-
-Copyright (C) 2006-2017 John MacFarlane <jgm@berkeley.edu>
+Copyright (C) 2006-2018 John MacFarlane <jgm@berkeley.edu>
 
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -23,7 +22,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 {- |
    Module      : Text.Pandoc.Readers.Sile
-   Copyright   : Copyright (C) 2015-2017 Caleb Maclennan
+   Copyright   : Copyright (C) 2015-2019 Caleb Maclennan
    License     : GNU GPL, version 2 or above
 
    Maintainer  : Caleb Maclennan <caleb@alerque.com>
@@ -36,28 +35,30 @@ Conversion of Sile to 'Pandoc' document.
 module Text.Pandoc.Readers.Sile (  readSile,
                                    rawSileInline,
                                    rawSileBlock,
-                                   inlineCommand
+                                   inlineCommand,
+                                   tokenize,
+                                   untokenize
                                  ) where
 
+import Prelude
 import Control.Applicative (many, optional, (<|>))
 import Control.Monad
 import Control.Monad.Except (throwError)
-import Control.Monad.Trans (lift)
-import Data.Char (chr, isAlphaNum, isLetter, ord, isDigit)
+import Data.Char (isDigit, isLetter, toLower, toUpper)
 import Data.Default
 import Data.Text (Text)
 import qualified Data.Text as T
-import Data.List (intercalate)
-import qualified Data.Map as M
-import qualified Data.Set as Set
-import Data.Maybe (fromMaybe)
 import Safe (minimumDef)
 import Text.Pandoc.Builder
-import Text.Pandoc.Class (PandocMonad, PandocPure, report)
+import Text.Pandoc.Class (PandocMonad, PandocPure, getResourcePath, lookupEnv,
+                          readFileFromDirs, report, setResourcePath,
+                          setTranslations, translateTerm, trace)
+import Text.Pandoc.Error (PandocError ( PandocParseError, PandocParsecError))
+import Text.Pandoc.ImageSize (numUnit, showFl)
 import Text.Pandoc.Logging
 import Text.Pandoc.Options
-import Text.Pandoc.Parsing hiding (many, optional, withRaw,
-                            space, (<|>), spaces, blankline)
+import Text.Pandoc.Parsing hiding (blankline, many, mathDisplay, mathInline,
+                            optional, space, spaces, withRaw, (<|>))
 import Text.Pandoc.Shared
 import Text.Pandoc.Readers.Sile.Types (Tok(..), TokType(..))
 import Text.Pandoc.Walk
@@ -81,7 +82,7 @@ readSile opts ltx = do
     Right result -> return result
     Left e       -> throwError $ PandocParsecError (T.unpack ltx) e
 
-parseSile :: PandocMonad m => SP m Pandoc
+parseSile :: PandocMonad m => LP m Pandoc
 parseSile = do
   bs <- blocks
   eof
@@ -113,7 +114,7 @@ resolveRefs labels x@(Link (ident,classes,kvs) _ _) =
 resolveRefs _ x = x
 
 
--- testParser :: SP PandocIO a -> Text -> IO a
+-- testParser :: LP PandocIO a -> Text -> IO a
 -- testParser p t = do
 --   res <- runIOorExplode (runParserT p defaultSileState{
 --             sOptions = def{ readerExtensions =
@@ -188,9 +189,9 @@ instance HasIncludeFiles SileState where
   addIncludeFile f s = s{ sContainers = f : sContainers s }
   dropLatestIncludeFile s = s { sContainers = drop 1 $ sContainers s }
 
-instance HasHeaderMap SileState where
-  extractHeaderMap     = sHeaders
-  updateHeaderMap f st = st{ sHeaders = f $ sHeaders st }
+-- instance HasHeaderMap SileState where
+--   extractHeaderMap     = sHeaders
+--   updateHeaderMap f st = st{ sHeaders = f $ sHeaders st }
 
 instance HasReaderOptions SileState where
   extractReaderOptions = sOptions
@@ -204,10 +205,10 @@ instance HasMeta SileState where
 instance Default SileState where
   def = defaultSileState
 
-type SP m = ParserT [Tok] SileState m
+type LP m = ParserT [Tok] SileState m
 
 rawSileParser :: (PandocMonad m, HasReaderOptions s)
-               => SP m a -> ParserT String s m String
+               => LP m a -> ParserT String s m String
 rawSileParser parser = do
   inp <- getInput
   let toks = tokenize "source" $ T.pack inp
@@ -345,7 +346,7 @@ untokenize = mconcat . map untoken
 untoken :: Tok -> Text
 untoken (Tok _ _ t) = t
 
-satisfyTok :: PandocMonad m => (Tok -> Bool) -> SP m Tok
+satisfyTok :: PandocMonad m => (Tok -> Bool) -> LP m Tok
 satisfyTok f =
   try $ do
     res <- tokenPrim (T.unpack . untoken) updatePos matcher
@@ -356,72 +357,72 @@ satisfyTok f =
         updatePos _spos _ (Tok pos _ _ : _) = pos
         updatePos spos _ [] = spos
 
-anyControlSeq :: PandocMonad m => SP m Tok
+anyControlSeq :: PandocMonad m => LP m Tok
 anyControlSeq = satisfyTok isCtrlSeq
   where isCtrlSeq (Tok _ (CtrlSeq _) _) = True
         isCtrlSeq _                     = False
 
-spaces :: PandocMonad m => SP m ()
+spaces :: PandocMonad m => LP m ()
 spaces = skipMany (satisfyTok (tokTypeIn [Comment, Spaces, Newline]))
 
-spaces1 :: PandocMonad m => SP m ()
+spaces1 :: PandocMonad m => LP m ()
 spaces1 = skipMany1 (satisfyTok (tokTypeIn [Comment, Spaces, Newline]))
 
 tokTypeIn :: [TokType] -> Tok -> Bool
 tokTypeIn toktypes (Tok _ tt _) = tt `elem` toktypes
 
-controlSeq :: PandocMonad m => Text -> SP m Tok
+controlSeq :: PandocMonad m => Text -> LP m Tok
 controlSeq name = satisfyTok isNamed
   where isNamed (Tok _ (CtrlSeq n) _) = n == name
         isNamed _ = False
 
-symbol :: PandocMonad m => Char -> SP m Tok
+symbol :: PandocMonad m => Char -> LP m Tok
 symbol c = satisfyTok isc
   where isc (Tok _ Symbol d) = case T.uncons d of
                                     Just (c',_) -> c == c'
                                     _ -> False
         isc _ = False
 
-symbolIn :: PandocMonad m => [Char] -> SP m Tok
+symbolIn :: PandocMonad m => [Char] -> LP m Tok
 symbolIn cs = satisfyTok isInCs
   where isInCs (Tok _ Symbol d) = case T.uncons d of
                                        Just (c,_) -> c `elem` cs
                                        _ -> False
         isInCs _ = False
 
-sp :: PandocMonad m => SP m ()
+sp :: PandocMonad m => LP m ()
 sp = whitespace <|> endline
 
-whitespace :: PandocMonad m => SP m ()
+whitespace :: PandocMonad m => LP m ()
 whitespace = () <$ satisfyTok isSpaceTok
   where isSpaceTok (Tok _ Spaces _) = True
         isSpaceTok _ = False
 
-newlineTok :: PandocMonad m => SP m ()
+newlineTok :: PandocMonad m => LP m ()
 newlineTok = () <$ satisfyTok isNewlineTok
 
 isNewlineTok :: Tok -> Bool
 isNewlineTok (Tok _ Newline _) = True
 isNewlineTok _ = False
 
-comment :: PandocMonad m => SP m ()
+comment :: PandocMonad m => LP m ()
 comment = () <$ satisfyTok isCommentTok
   where isCommentTok (Tok _ Comment _) = True
         isCommentTok _ = False
 
-anyTok :: PandocMonad m => SP m Tok
+anyTok :: PandocMonad m => LP m Tok
 anyTok = satisfyTok (const True)
 
-endline :: PandocMonad m => SP m ()
+endline :: PandocMonad m => LP m ()
 endline = try $ do
   newlineTok
   lookAhead anyTok
   notFollowedBy blankline
 
-blankline :: PandocMonad m => SP m ()
+blankline :: PandocMonad m => LP m ()
 blankline = try $ skipMany whitespace *> newlineTok
 
-primEscape :: PandocMonad m => SP m Char
+primEscape :: PandocMonad m => LP m Char
 primEscape = do
   Tok _ toktype t <- satisfyTok (tokTypeIn [Esc1, Esc2])
   case toktype of
@@ -435,22 +436,22 @@ primEscape = do
                     Nothing -> fail $ "Could not read: " ++ T.unpack t
        _    -> fail "Expected an Esc1 or Esc2 token" -- should not happen
 
-bgroup :: PandocMonad m => SP m Tok
+bgroup :: PandocMonad m => LP m Tok
 bgroup = try $ do
   skipMany sp
   symbol '{' <|> controlSeq "bgroup" <|> controlSeq "begingroup"
 
-egroup :: PandocMonad m => SP m Tok
+egroup :: PandocMonad m => LP m Tok
 egroup = (symbol '}' <|> controlSeq "egroup" <|> controlSeq "endgroup")
 
-grouped :: (PandocMonad m,  Monoid a) => SP m a -> SP m a
+grouped :: (PandocMonad m,  Monoid a) => LP m a -> LP m a
 grouped parser = try $ do
   bgroup
   -- first we check for an inner 'grouped', because
   -- {{a,b}} should be parsed the same as {a,b}
   try (grouped parser <* egroup) <|> (mconcat <$> manyTill parser egroup)
 
-braced :: PandocMonad m => SP m [Tok]
+braced :: PandocMonad m => LP m [Tok]
 braced = bgroup *> braced' 1
   where braced' (n :: Int) =
           handleEgroup n <|> handleBgroup n <|> handleOther n
@@ -466,12 +467,12 @@ braced = bgroup *> braced' 1
           t <- anyTok
           (t:) <$> braced' n
 
-bracketed :: PandocMonad m => Monoid a => SP m a -> SP m a
+bracketed :: PandocMonad m => Monoid a => LP m a -> LP m a
 bracketed parser = try $ do
   symbol '['
   mconcat <$> manyTill parser (symbol ']')
 
-dimenarg :: PandocMonad m => SP m Text
+dimenarg :: PandocMonad m => LP m Text
 dimenarg = try $ do
   ch  <- option False $ True <$ symbol '='
   Tok _ _ s <- satisfyTok isWordTok
@@ -484,10 +485,10 @@ dimenarg = try $ do
 
 -- inline elements:
 
-word :: PandocMonad m => SP m Inlines
+word :: PandocMonad m => LP m Inlines
 word = (str . T.unpack . untoken) <$> satisfyTok isWordTok
 
-regularSymbol :: PandocMonad m => SP m Inlines
+regularSymbol :: PandocMonad m => LP m Inlines
 regularSymbol = (str . T.unpack . untoken) <$> satisfyTok isRegularSymbol
   where isRegularSymbol (Tok _ Symbol t) = not $ T.any isSpecial t
         isRegularSymbol _ = False
@@ -500,7 +501,7 @@ isWordTok :: Tok -> Bool
 isWordTok (Tok _ Word _) = True
 isWordTok _ = False
 
-inlineGroup :: PandocMonad m => SP m Inlines
+inlineGroup :: PandocMonad m => LP m Inlines
 inlineGroup = do
   ils <- grouped inline
   if isNull ils
@@ -509,11 +510,11 @@ inlineGroup = do
           -- we need the span so we can detitlecase bibtex entries;
           -- we need to know when something is {C}apitalized
 
-lit :: String -> SP m Inlines
+lit :: String -> LP m Inlines
 lit = pure . str
 
 
-doubleQuote :: PandocMonad m => SP m Inlines
+doubleQuote :: PandocMonad m => LP m Inlines
 doubleQuote = do
        quoted' doubleQuoted (try $ count 2 $ symbol '`')
                             (void $ try $ count 2 $ symbol '\'')
@@ -522,7 +523,7 @@ doubleQuote = do
    <|> quoted' doubleQuoted (try $ sequence [symbol '"', symbol '`'])
                             (void $ try $ sequence [symbol '"', symbol '\''])
 
-singleQuote :: PandocMonad m => SP m Inlines
+singleQuote :: PandocMonad m => LP m Inlines
 singleQuote = do
        quoted' singleQuoted ((:[]) <$> symbol '`')
                             (try $ symbol '\'' >>
@@ -538,9 +539,9 @@ singleQuote = do
 
 quoted' :: PandocMonad m
         => (Inlines -> Inlines)
-        -> SP m [Tok]
-        -> SP m ()
-        -> SP m Inlines
+        -> LP m [Tok]
+        -> LP m ()
+        -> LP m Inlines
 quoted' f starter ender = do
   startchs <- (T.unpack . untokenize) <$> starter
   smart <- extensionEnabled Ext_smart <$> getOption readerExtensions
@@ -562,7 +563,7 @@ toksToString = T.unpack . untokenize
 -- citations
 
 
-inlineCommand' :: PandocMonad m => SP m Inlines
+inlineCommand' :: PandocMonad m => LP m Inlines
 inlineCommand' = try $ do
   Tok _ (CtrlSeq name) cmd <- anyControlSeq
   guard $ name /= "begin" && name /= "end"
@@ -576,13 +577,13 @@ inlineCommand' = try $ do
          <|> ignore rawcommand
   lookupListDefault raw names inlineCommands
 
-tok :: PandocMonad m => SP m Inlines
+tok :: PandocMonad m => LP m Inlines
 tok = grouped inline <|> inlineCommand' <|> singleChar'
   where singleChar' = do
           Tok _ _ t <- singleChar
           return (str (T.unpack t))
 
-singleChar :: PandocMonad m => SP m Tok
+singleChar :: PandocMonad m => LP m Tok
 singleChar = try $ do
   Tok pos toktype t <- satisfyTok (tokTypeIn [Word, Symbol])
   guard $ not $ toktype == Symbol &&
@@ -596,13 +597,13 @@ singleChar = try $ do
      else return $ Tok pos toktype t
 
 
-rawopt :: PandocMonad m => SP m Text
+rawopt :: PandocMonad m => LP m Text
 rawopt = do
   inner <- untokenize <$> bracketedToks
   optional sp
   return $ "[" <> inner <> "]"
 
-skipopts :: PandocMonad m => SP m ()
+skipopts :: PandocMonad m => LP m ()
 skipopts = skipMany rawopt
 
 ignore :: (Monoid a, PandocMonad m) => String -> ParserT s u m a
@@ -611,7 +612,7 @@ ignore raw = do
   report $ SkippedContent raw pos
   return mempty
 
-withRaw :: PandocMonad m => SP m a -> SP m (a, [Tok])
+withRaw :: PandocMonad m => LP m a -> LP m (a, [Tok])
 withRaw parser = do
   inp <- getInput
   result <- parser
@@ -626,17 +627,17 @@ unescapeURL ('\\':x:xs) | isEscapable x = x:unescapeURL xs
 unescapeURL (x:xs) = x:unescapeURL xs
 unescapeURL [] = ""
 
-inlineEnvironment :: PandocMonad m => SP m Inlines
+inlineEnvironment :: PandocMonad m => LP m Inlines
 inlineEnvironment = try $ do
   controlSeq "begin"
   name <- untokenize <$> braced
   M.findWithDefault mzero name inlineEnvironments
 
-inlineEnvironments :: PandocMonad m => M.Map Text (SP m Inlines)
+inlineEnvironments :: PandocMonad m => M.Map Text (LP m Inlines)
 inlineEnvironments = M.fromList [
   ]
 
-inlineCommands :: PandocMonad m => M.Map Text (SP m Inlines)
+inlineCommands :: PandocMonad m => M.Map Text (LP m Inlines)
 inlineCommands = M.fromList
   [ ("em", extractSpaces emph <$> tok)
   , ("strike", extractSpaces strikeout <$> tok)
@@ -659,7 +660,7 @@ inlineCommands = M.fromList
   ]
 
 
-getRawCommand :: PandocMonad m => Text -> Text -> SP m String
+getRawCommand :: PandocMonad m => Text -> Text -> LP m String
 getRawCommand name txt = do
   (_, rawargs) <- withRaw $
       case name of
@@ -680,7 +681,7 @@ getRawCommand name txt = do
 
 isBlockCommand :: Text -> Bool
 isBlockCommand s =
-  s `M.member` (blockCommands :: M.Map Text (SP PandocPure Blocks))
+  s `M.member` (blockCommands :: M.Map Text (LP PandocPure Blocks))
   || s `Set.member` treatAsBlock
 
 treatAsBlock :: Set.Set Text
@@ -691,7 +692,7 @@ treatAsBlock = Set.fromList
 
 isInlineCommand :: Text -> Bool
 isInlineCommand s =
-  s `M.member` (inlineCommands :: M.Map Text (SP PandocPure Inlines))
+  s `M.member` (inlineCommands :: M.Map Text (LP PandocPure Inlines))
   || s `Set.member` treatAsInline
 
 treatAsInline :: Set.Set Text
@@ -708,7 +709,7 @@ lookupListDefault :: (Show k, Ord k) => v -> [k] -> M.Map k v -> v
 lookupListDefault d = (fromMaybe d .) . lookupList
   where lookupList l m = msum $ map (`M.lookup` m) l
 
-inline :: PandocMonad m => SP m Inlines
+inline :: PandocMonad m => LP m Inlines
 inline = (mempty <$ comment)
      <|> (softbreak <$ endline)
      <|> word
@@ -733,13 +734,13 @@ inline = (mempty <$ comment)
              report $ ParsingUnescaped s pos
              return $ str s)
 
-inlines :: PandocMonad m => SP m Inlines
+inlines :: PandocMonad m => LP m Inlines
 inlines = mconcat <$> many inline
 
 -- block elements:
 
 
-end_ :: PandocMonad m => Text -> SP m ()
+end_ :: PandocMonad m => Text -> LP m ()
 end_ t = (try $ do
   controlSeq "end"
   spaces
@@ -747,7 +748,7 @@ end_ t = (try $ do
   guard $ t == txt) <?> ("\\end{" ++ T.unpack t ++ "}")
 
 
-paragraph :: PandocMonad m => SP m Blocks
+paragraph :: PandocMonad m => LP m Blocks
 paragraph = do
   x <- trimInlines . mconcat <$> many1 inline
   if x == mempty
@@ -755,11 +756,11 @@ paragraph = do
      else return $ para x
 
 
-addMeta :: PandocMonad m => ToMetaValue a => String -> a -> SP m ()
+addMeta :: PandocMonad m => ToMetaValue a => String -> a -> LP m ()
 addMeta field val = updateState $ \st ->
    st{ sMeta = addMetaField field val $ sMeta st }
 
-authors :: PandocMonad m => SP m ()
+authors :: PandocMonad m => LP m ()
 authors = try $ do
   bgroup
   let oneAuthor = mconcat <$>
@@ -770,18 +771,18 @@ authors = try $ do
   egroup
   addMeta "author" (map trimInlines auths)
 
-bracketedToks :: PandocMonad m => SP m [Tok]
+bracketedToks :: PandocMonad m => LP m [Tok]
 bracketedToks = do
   symbol '['
   mconcat <$> manyTill (braced <|> (:[]) <$> anyTok) (symbol ']')
 
 
-looseItem :: PandocMonad m => SP m Blocks
+looseItem :: PandocMonad m => LP m Blocks
 looseItem = do
   skipopts
   return mempty
 
-section :: PandocMonad m => Bool -> Attr -> Int -> SP m Blocks
+section :: PandocMonad m => Bool -> Attr -> Int -> LP m Blocks
 section starred (ident, classes, kvs) lvl = do
   skipopts
   contents <- grouped inline
@@ -799,7 +800,7 @@ section starred (ident, classes, kvs) lvl = do
   attr' <- registerHeader (lab, classes', kvs) contents
   return $ headerWith attr' lvl contents
 
-blockCommand :: PandocMonad m => SP m Blocks
+blockCommand :: PandocMonad m => LP m Blocks
 blockCommand = try $ do
   Tok _ (CtrlSeq name) txt <- anyControlSeq
   guard $ name /= "begin" && name /= "end"
@@ -827,7 +828,7 @@ blockCommand = try $ do
   let raw = rawDefiniteBlock <|> rawMaybeBlock
   lookupListDefault raw names blockCommands
 
-blockCommands :: PandocMonad m => M.Map Text (SP m Blocks)
+blockCommands :: PandocMonad m => M.Map Text (LP m Blocks)
 blockCommands = M.fromList $
   [ ("par", mempty <$ skipopts)
   , ("title", mempty <$ (skipopts *>
@@ -846,7 +847,7 @@ blockCommands = M.fromList $
    ]
 
 
-environments :: PandocMonad m => M.Map Text (SP m Blocks)
+environments :: PandocMonad m => M.Map Text (LP m Blocks)
 environments = M.fromList
    [ ("document", env "document" blocks)
    , ("center", env "center" blocks)
@@ -855,17 +856,17 @@ environments = M.fromList
    , ("listarea", bulletList <$> listenv "itemize" (many item))
    , ("obeylines", obeylines)
    ]
-environment :: PandocMonad m => SP m Blocks
+environment :: PandocMonad m => LP m Blocks
 environment = do
   controlSeq "begin"
   name <- untokenize <$> braced
   M.findWithDefault mzero name environments
     <|> rawEnv name
 
-env :: PandocMonad m => Text -> SP m a -> SP m a
+env :: PandocMonad m => Text -> LP m a -> LP m a
 env name p = p <* end_ name
 
-rawEnv :: PandocMonad m => Text -> SP m Blocks
+rawEnv :: PandocMonad m => Text -> LP m Blocks
 rawEnv name = do
   exts <- getOption readerExtensions
   let parseRaw = extensionEnabled Ext_raw_tex exts
@@ -882,7 +883,7 @@ rawEnv name = do
        report $ SkippedContent ("\\end{" ++ T.unpack name ++ "}") pos2
        return bs
 
-obeylines :: PandocMonad m => SP m Blocks
+obeylines :: PandocMonad m => LP m Blocks
 obeylines = do
   para . fromList . removeLeadingTrailingBreaks .
      walk softBreakToHard . toList <$> env "obeylines" inlines
@@ -895,10 +896,10 @@ obeylines = do
 
 -- lists
 
-item :: PandocMonad m => SP m Blocks
+item :: PandocMonad m => LP m Blocks
 item = void blocks *> controlSeq "item" *> skipopts *> blocks
 
-listenv :: PandocMonad m => Text -> SP m a -> SP m a
+listenv :: PandocMonad m => Text -> LP m a -> LP m a
 listenv name p = try $ do
   res <- env name p
   return res
@@ -910,12 +911,12 @@ listenv name p = try $ do
 
 
 
-block :: PandocMonad m => SP m Blocks
+block :: PandocMonad m => LP m Blocks
 block = (mempty <$ spaces1)
     <|> environment
     <|> blockCommand
     <|> paragraph
     <|> grouped block
 
-blocks :: PandocMonad m => SP m Blocks
+blocks :: PandocMonad m => LP m Blocks
 blocks = mconcat <$> many block
