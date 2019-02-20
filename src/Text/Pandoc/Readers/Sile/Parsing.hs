@@ -41,12 +41,15 @@ module Text.Pandoc.Readers.Sile.Parsing
   , LP
   , withVerbatimMode
   , rawSileParser
+  , applyMacros
   , tokenize
   , untokenize
   , untoken
   , totoks
   , toksToString
   , satisfyTok
+  , doMacros
+  , doMacros'
   , setpos
   , anyControlSeq
   , anySymbol
@@ -103,7 +106,7 @@ import Text.Pandoc.Logging
 import Text.Pandoc.Options
 import Text.Pandoc.Parsing hiding (blankline, many, mathDisplay, mathInline,
                             space, spaces, withRaw, (<|>))
-import Text.Pandoc.Readers.Sile.Types (ExpansionPoint (..),
+import Text.Pandoc.Readers.LaTeX.Types (ExpansionPoint (..), Macro (..),
                                         ArgSpec (..), Tok (..), TokType (..))
 import Text.Pandoc.Shared
 import Text.Parsec.Pos
@@ -126,6 +129,7 @@ incrementDottedNum level (DottedNum ns) = DottedNum $
 data SileState = SileState{ sOptions       :: ReaderOptions
                             , sMeta          :: Meta
                             , sQuoteContext  :: QuoteContext
+                            , sMacros        :: M.Map Text Macro
                             , sContainers    :: [String]
                             , sLogMessages   :: [LogMessage]
                             , sIdentifiers   :: Set.Set String
@@ -146,6 +150,7 @@ defaultSileState :: SileState
 defaultSileState = SileState{ sOptions       = def
                               , sMeta          = nullMeta
                               , sQuoteContext  = NoQuote
+                              , sMacros        = M.empty
                               , sContainers    = []
                               , sLogMessages   = []
                               , sIdentifiers   = Set.empty
@@ -210,13 +215,14 @@ withVerbatimMode parser = do
        updateState $ \st -> st{ sVerbatimMode = False }
        return result
 
-rawSileParser :: (PandocMonad m, HasReaderOptions s)
+rawSileParser :: (PandocMonad m, HasMacros s, HasReaderOptions s)
                => Bool -> LP m a -> LP m a -> ParserT String s m (a, String)
 rawSileParser retokenize parser valParser = do
   inp <- getInput
   let toks = tokenize "source" $ T.pack inp
   pstate <- getState
   let lstate = def{ sOptions = extractReaderOptions pstate }
+  let lstate' = lstate { sMacros = extractMacros pstate }
   let rawparser = (,) <$> withRaw valParser <*> getState
   res' <- lift $ runParserT (snd <$> withRaw parser) lstate "chunk" toks
   case res' of
@@ -226,10 +232,10 @@ rawSileParser retokenize parser valParser = do
                                         ts <- many (satisfyTok (const True))
                                         setInput ts
                                       rawparser)
-                        lstate "chunk" toks'
+                        lstate' "chunk" toks'
          case res of
               Left _    -> mzero
-              Right ((val, raw)) -> do
+              Right ((val, raw), st) -> do
                 _ <- takeP (T.length (untokenize toks'))
                 return (val, T.unpack (untokenize raw))
 

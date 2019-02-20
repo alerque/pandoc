@@ -229,7 +229,7 @@ toLabel z = go `fmap` stringToSile URLString z
  where go [] = ""
        go (x:xs)
          | (isLetter x || isDigit x) && isAscii x = x:go xs
-         | elem x ("-+=:;." :: String) = x:go xs
+         | x `elem` ("_-+=:;." :: String) = x:go xs
          | otherwise = "ux" ++ printf "%x" (ord x) ++ go xs
 
 -- | Puts contents into Sile command.
