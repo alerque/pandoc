@@ -30,6 +30,7 @@ Types for Sile tokens and macros.
 -}
 module Text.Pandoc.Readers.Sile.Types ( Tok(..)
                                        , TokType(..)
+                                       , Macro(..)
                                        , ArgSpec(..)
                                        , ExpansionPoint(..)
                                        , SourcePos
