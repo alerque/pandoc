@@ -246,17 +246,9 @@ quoted' f starter ender = do
 
 blockquote :: PandocMonad m => Bool -> Maybe Text -> LP m Blocks
 blockquote citations mblang = do
-  citePar <- if citations
-                then do
-                  cs <- cites NormalCitation False
-                  return $ para (cite cs mempty)
-                else return mempty
-  let lang = (T.unpack <$> mblang) >>= babelLangToBCP47
-  let langdiv = case lang of
-                      Nothing -> id
-                      Just l  -> divWith ("",[],[("lang", renderLang l)])
+  citePar <- return mempty
   bs <- grouped block
-  return $ blockQuote . langdiv $ (bs <> citePar)
+  return $ blockQuote $ (bs <> citePar)
 
 doAcronym :: PandocMonad m => String -> LP m Inlines
 doAcronym form = do
@@ -298,7 +290,7 @@ verbTok stopchar = do
 dolstinline :: PandocMonad m => LP m Inlines
 dolstinline = do
   options <- option [] keyvals
-  let classes = maybeToList $ lookup "language" options >>= fromListingsLanguage
+  let classes = []
   doinlinecode classes
 
 domintinline :: PandocMonad m => LP m Inlines
