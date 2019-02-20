@@ -505,8 +505,7 @@ sectionHeader unnumbered ident level lst = do
                           5  -> "subparagraph"
                           _  -> ""
   lab <- labelFor ident
-  let star = if unnumbered && level' < 4 then text "*" else empty
-  let stuffing = star <> optional <> contents
+  let stuffing = optional <> contents
   return $ if level' > 5
               then txt
               else text ('\\':sectionType) <> stuffing
