@@ -136,7 +136,7 @@ resolveRefs _ x = x
 --        Right r -> return r
 
 
-rawSileBlock :: (PandocMonad m, HasReaderOptions s)
+rawSileBlock :: (PandocMonad m, HasMacros s, HasReaderOptions s)
               => ParserT String s m String
 rawSileBlock = do
   lookAhead (try (char '\\' >> letter))

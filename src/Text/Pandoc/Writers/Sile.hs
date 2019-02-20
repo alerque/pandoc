@@ -44,6 +44,7 @@ import Data.Text (Text)
 import Network.URI (unEscapeString)
 import Text.Pandoc.Class (PandocMonad, report)
 import Text.Pandoc.Definition
+import Text.Pandoc.ImageSize
 import Text.Pandoc.Logging
 import Text.Pandoc.Options
 import Text.Pandoc.Pretty
@@ -248,58 +249,85 @@ blockToSile :: PandocMonad m
              => Block     -- ^ Block to convert
              -> LW m Doc
 blockToSile Null = return empty
-blockToSile (Div (identifier,_,_) bs) = do
-  ref <- toLabel identifier
-  let linkAnchor = if null identifier
-                      then empty
-                      else "\\pdf:link" <> braces (text ref)
-  contents <- blockListToSile bs
-  return (linkAnchor $$ contents)
+blockToSile (Div (identifier,classes,kvs) bs)
+  | "incremental" `elem` classes = do
+      let classes' = filter ("incremental"/=) classes
+      blockToSile $ Div (identifier,classes',kvs) bs
+  | "nonincremental" `elem` classes = do
+      let classes' = filter ("nonincremental"/=) classes
+      blockToSile $ Div (identifier,classes',kvs) bs
+  | otherwise = do
+      linkAnchor' <- hypertarget True identifier empty
+    -- see #2704 for the motivation for adding \leavevmode:
+      let linkAnchor =
+            case bs of
+              Para _ : _
+                | not (isEmpty linkAnchor')
+                  -> "\\leavevmode" <> linkAnchor' <> "%"
+              _ -> linkAnchor'
+      let align dir txt = inCmd "begin" dir $$ txt $$ inCmd "end" dir
+      let wrapColumns = if "columns" `elem` classes
+                        then \contents ->
+                               inCmd "begin" "columns" <> brackets "T"
+                               $$ contents
+                               $$ inCmd "end" "columns"
+                        else id
+          wrapColumn  = if "column" `elem` classes
+                        then \contents ->
+                               let w = maybe "0.48" fromPct (lookup "width" kvs)
+                               in  inCmd "begin" "column" <>
+                                   braces (text w <> "\\textwidth")
+                                   $$ contents
+                                   $$ inCmd "end" "column"
+                        else id
+          fromPct xs =
+            case reverse xs of
+              '%':ds -> case safeRead (reverse ds) of
+                          Just digits -> showFl (digits / 100 :: Double)
+                          Nothing -> xs
+              _      -> xs
+          wrapDir = case lookup "dir" kvs of
+                      Just "rtl" -> align "RTL"
+                      Just "ltr" -> align "LTR"
+                      _          -> id
+          wrapNotes txt = if "notes" `elem` classes
+                          then "\\note" <> braces txt -- speaker notes
+                          else linkAnchor $$ txt
+      (wrapColumns . wrapColumn . wrapDir . wrapNotes)
+        <$> blockListToSile bs
 blockToSile (Plain lst) =
   inlineListToSile $ dropWhile isLineBreakOrSpace lst
+-- title beginning with fig: indicates that the image is a figure
 blockToSile (Para [Str ".",Space,Str ".",Space,Str "."]) = do
   inlineListToSile [Str ".",Space,Str ".",Space,Str "."]
 blockToSile (Para lst) =
   inlineListToSile $ dropWhile isLineBreakOrSpace lst
-blockToSile (LineBlock lns) = do
+blockToSile (LineBlock lns) =
   blockToSile $ linesToPara lns
 blockToSile (BlockQuote lst) = do
-  oldInQuote <- gets stInQuote
-  modify (\s -> s{stInQuote = True})
-  contents <- blockListToSile lst
-  modify (\s -> s{stInQuote = oldInQuote})
-  return $ "\\begin{quote}" $$ contents $$ "\\end{quote}"
+  case lst of
+       _ -> do
+         oldInQuote <- gets stInQuote
+         modify (\s -> s{stInQuote = True})
+         contents <- blockListToSile lst
+         modify (\s -> s{stInQuote = oldInQuote})
+         return $ "\\begin{quote}" $$ contents $$ "\\end{quote}"
 blockToSile (CodeBlock (identifier,classes,keyvalAttr) str) = do
   opts <- gets stOptions
-  ref <- toLabel identifier
-  str' <- stringToSile CodeString str
-  let classes' = [ val | (val) <- classes ]
-  let classes'' = intercalate ", " classes'
-  let params = (if identifier == ""
-                  then []
-                  else [ "id=" ++ ref ]) ++
-               (if null classes
-                  then []
-                  else [ "classes={" ++ classes'' ++ "}" ] ) ++
-                (if null keyvalAttr
-                  then []
-                  else [ key ++ "=" ++ attr | (key, attr) <- keyvalAttr ])
-      sileParams
-          | null params = empty
-          | otherwise = brackets $ hcat (intersperse ", " (map text params))
-  let linkAnchor = if null identifier
+  lab <- labelFor identifier
+  linkAnchor' <- hypertarget True identifier lab
+  let linkAnchor = if isEmpty linkAnchor'
                       then empty
-                      else "\\pdf:link" <> brackets (text ref) <> braces (text ref)
+                      else linkAnchor' <> "%"
   let lhsCodeBlock = do
         modify $ \s -> s{ stLHS = True }
         return $ flush (linkAnchor $$ "\\begin{code}" $$ text str $$
                             "\\end{code}") $$ cr
   let rawCodeBlock = do
-        env <- do return "verbatim"
-        return $ flush (linkAnchor $$
-                        text "\\begin" <> sileParams <> braces env $$
-                        text str' $$
-                        text "\\end" <> braces env) <> cr
+        st <- get
+        env <- return "verbatim"
+        return $ flush (linkAnchor $$ text ("\\begin{" ++ env ++ "}") $$
+                 text str $$ text ("\\end{" ++ env ++ "}")) <> cr
 
   case () of
      _ | isEnabled Ext_literate_haskell opts && "haskell" `elem` classes &&
@@ -473,9 +501,25 @@ sectionHeader :: PandocMonad m
               -> LW m Doc
 sectionHeader unnumbered ident level lst = do
   txt <- inlineListToSile lst
-  lab <- text `fmap` toLabel ident
-  let options = if unnumbered then "numbering=false" else empty
-  let stuffing = brackets options <> braces txt
+  plain <- stringToSile TextString $ concatMap stringify lst
+  let removeInvalidInline (Note _)             = []
+      removeInvalidInline (Span (id', _, _) _) | not (null id') = []
+      removeInvalidInline Image{}            = []
+      removeInvalidInline x                    = [x]
+  let lstNoNotes = foldr (mappend . (\x -> walkM removeInvalidInline x)) mempty lst
+  txtNoNotes <- inlineListToSile lstNoNotes
+  -- footnotes in sections don't work (except for starred variants)
+  -- unless you specify an optional argument:
+  -- \section[mysec]{mysec\footnote{blah}}
+  optional <- if unnumbered || lstNoNotes == lst || null lstNoNotes
+                 then return empty
+                 else
+                   return $ brackets txtNoNotes
+  let contents = if render Nothing txt == plain
+                    then braces txt
+                    else braces (text "\\texorpdfstring"
+                         <> braces txt
+                         <> braces (text plain))
   book <- gets stBook
   opts <- gets stOptions
   let topLevelDivision = if book && writerTopLevelDivision opts == TopLevelDefault
@@ -483,7 +527,6 @@ sectionHeader unnumbered ident level lst = do
                          else writerTopLevelDivision opts
   let level' = if
                   topLevelDivision `elem` [TopLevelPart, TopLevelChapter]
-               -- beamer has parts but no chapters
                then if level == 1 then -1 else level - 1
                else case topLevelDivision of
                       TopLevelPart    -> level - 2
@@ -499,6 +542,12 @@ sectionHeader unnumbered ident level lst = do
                           4  -> "paragraph"
                           5  -> "subparagraph"
                           _  -> ""
+  let prefix = empty
+  lab <- labelFor ident
+  let star = if unnumbered && level' < 4 then text "*" else empty
+  let stuffing = star <> optional <> contents
+  stuffing' <- hypertarget True ident $
+                  text ('\\':sectionType) <> stuffing <> lab
   return $ if level' > 5
               then txt
               else prefix $$ stuffing'
@@ -507,6 +556,22 @@ sectionHeader unnumbered ident level lst = do
                                 braces (text sectionType) <>
                                 braces txtNoNotes
                          else empty
+
+hypertarget :: PandocMonad m => Bool -> String -> Doc -> LW m Doc
+hypertarget _ "" x    = return x
+hypertarget addnewline ident x = do
+  ref <- text `fmap` toLabel ident
+  return $ text "\\hypertarget"
+              <> braces ref
+              <> braces ((if addnewline && not (isEmpty x)
+                             then ("%" <> cr)
+                             else empty) <> x)
+
+labelFor :: PandocMonad m => String -> LW m Doc
+labelFor ""    = return empty
+labelFor ident = do
+  ref <- text `fmap` toLabel ident
+  return $ text "\\label" <> braces ref
 
 -- | Convert list of inline elements to Sile.
 inlineListToSile :: PandocMonad m
