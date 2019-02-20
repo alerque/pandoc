@@ -481,19 +481,15 @@ sectionHeader unnumbered ident level lst = do
   let topLevelDivision = if book && writerTopLevelDivision opts == TopLevelDefault
                          then TopLevelChapter
                          else writerTopLevelDivision opts
-  let level' = case topLevelDivision of
-                  TopLevelPart    -> level - 3
-                  TopLevelChapter -> level - 2
-                  TopLevelSection -> level - 1
-                  TopLevelDefault -> level - 1
-  internalLinks <- gets stInternalLinks
-  let lab' = "dest=" <> lab <> ",title=" <> txt
-  let refLabel x = (if ident `elem` internalLinks
-                       then text "\\pdf:link"
-                                <> brackets lab'
-                                <> braces x
-                       else x)
-  let headerWith x y = refLabel $ text x <> y
+  let level' = if
+                  topLevelDivision `elem` [TopLevelPart, TopLevelChapter]
+               -- beamer has parts but no chapters
+               then if level == 1 then -1 else level - 1
+               else case topLevelDivision of
+                      TopLevelPart    -> level - 2
+                      TopLevelChapter -> level - 1
+                      TopLevelSection -> level
+                      TopLevelDefault -> level
   let sectionType = case level' of
                           -1 -> "part"
                           0  -> "chapter"
@@ -505,7 +501,12 @@ sectionHeader unnumbered ident level lst = do
                           _  -> ""
   return $ if level' > 5
               then txt
-              else headerWith ('\\':sectionType) stuffing
+              else prefix $$ stuffing'
+                   $$ if unnumbered
+                         then "\\addcontentsline{toc}" <>
+                                braces (text sectionType) <>
+                                braces txtNoNotes
+                         else empty
 
 -- | Convert list of inline elements to Sile.
 inlineListToSile :: PandocMonad m
