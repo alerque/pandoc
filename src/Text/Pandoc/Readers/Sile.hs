@@ -65,7 +65,7 @@ import Text.Pandoc.ImageSize (numUnit, showFl)
 import Text.Pandoc.Logging
 import Text.Pandoc.Options
 import Text.Pandoc.Parsing hiding (blankline, many, mathDisplay, mathInline,
-                            optional, space, spaces, withRaw, (<|>))
+                            optional, space, spaces, (<|>))
 import Text.Pandoc.Readers.Sile.Types (ExpansionPoint (..), Macro (..),
                                         ArgSpec (..), Tok (..), TokType (..))
 -- import Text.Pandoc.Readers.Sile.Parsing
@@ -100,16 +100,16 @@ parseSile = do
   let meta = sMeta st
   let doc' = doc bs
   let headerLevel (Header n _ _) = [n]
-      headerLevel _ = []
+      headerLevel _              = []
   let bottomLevel = minimumDef 1 $ query headerLevel doc'
   let adjustHeaders m (Header n attr ils) = Header (n+m) attr ils
-      adjustHeaders _ x = x
+      adjustHeaders _ x                   = x
   let (Pandoc _ bs') =
        -- handle the case where you have \part or \chapter
        (if bottomLevel < 1
            then walk (adjustHeaders (1 - bottomLevel))
            else id) $
-       walk (resolveRefs (sLabels st)) $ doc'
+       walk (resolveRefs (sLabels st)) doc'
   return $ Pandoc meta bs'
 
 resolveRefs :: M.Map String [Inline] -> Inline -> Inline
@@ -134,288 +134,49 @@ resolveRefs _ x = x
 --        Left e  -> error (show e)
 --        Right r -> return r
 
-newtype HeaderNum = HeaderNum [Int]
-  deriving (Show)
-
-renderHeaderNum :: HeaderNum -> String
-renderHeaderNum (HeaderNum xs) =
-  intercalate "." (map show xs)
-
-incrementHeaderNum :: Int -> HeaderNum -> HeaderNum
-incrementHeaderNum level (HeaderNum ns) = HeaderNum $
-  case reverse (take level (ns ++ repeat 0)) of
-       (x:xs) -> reverse (x+1 : xs)
-       []     -> []  -- shouldn't happen
-
-data SileState = SileState{   sOptions       :: ReaderOptions
-                            , sMeta          :: Meta
-                            , sQuoteContext  :: QuoteContext
-                            , sContainers    :: [String]
-                            , sHeaders       :: M.Map Inlines String
-                            , sLogMessages   :: [LogMessage]
-                            , sIdentifiers   :: Set.Set String
-                            , sCaption       :: Maybe Inlines
-                            , sLastHeaderNum :: HeaderNum
-                            , sLabels        :: M.Map String [Inline]
-                            , sToggles       :: M.Map String Bool
-                            }
-     deriving Show
-
-defaultSileState :: SileState
-defaultSileState = SileState{   sOptions       = def
-                              , sMeta          = nullMeta
-                              , sQuoteContext  = NoQuote
-                              , sContainers    = []
-                              , sHeaders       = M.empty
-                              , sLogMessages   = []
-                              , sIdentifiers   = Set.empty
-                              , sCaption       = Nothing
-                              , sLastHeaderNum = HeaderNum []
-                              , sLabels        = M.empty
-                              , sToggles       = M.empty
-                              }
-
-instance PandocMonad m => HasQuoteContext SileState m where
-  getQuoteContext = sQuoteContext <$> getState
-  withQuoteContext context parser = do
-    oldState <- getState
-    let oldQuoteContext = sQuoteContext oldState
-    setState oldState { sQuoteContext = context }
-    result <- parser
-    newState <- getState
-    setState newState { sQuoteContext = oldQuoteContext }
-    return result
-
-instance HasLogMessages SileState where
-  addLogMessage msg st = st{ sLogMessages = msg : sLogMessages st }
-  getLogMessages st = reverse $ sLogMessages st
-
-instance HasIdentifierList SileState where
-  extractIdentifierList     = sIdentifiers
-  updateIdentifierList f st = st{ sIdentifiers = f $ sIdentifiers st }
-
-instance HasIncludeFiles SileState where
-  getIncludeFiles = sContainers
-  addIncludeFile f s = s{ sContainers = f : sContainers s }
-  dropLatestIncludeFile s = s { sContainers = drop 1 $ sContainers s }
-
--- instance HasHeaderMap SileState where
---   extractHeaderMap     = sHeaders
---   updateHeaderMap f st = st{ sHeaders = f $ sHeaders st }
-
-instance HasReaderOptions SileState where
-  extractReaderOptions = sOptions
-
-instance HasMeta SileState where
-  setMeta field val st =
-    st{ sMeta = setMeta field val $ sMeta st }
-  deleteMeta field st =
-    st{ sMeta = deleteMeta field $ sMeta st }
-
-instance Default SileState where
-  def = defaultSileState
-
-type LP m = ParserT [Tok] SileState m
-
-rawSileParser :: (PandocMonad m, HasReaderOptions s)
-               => LP m a -> ParserT String s m String
-rawSileParser parser = do
-  inp <- getInput
-  let toks = tokenize "source" $ T.pack inp
-  pstate <- getState
-  let lstate = def{ sOptions = extractReaderOptions pstate }
-  res <- lift $ runParserT ((,) <$> try (snd <$> withRaw parser) <*> getState)
-            lstate "source" toks
-  case res of
-       Left _    -> mzero
-       Right (raw, _) -> do
-         takeP (T.length (untokenize raw))
 
 rawSileBlock :: (PandocMonad m, HasReaderOptions s)
               => ParserT String s m String
 rawSileBlock = do
   lookAhead (try (char '\\' >> letter))
-  rawSileParser (environment <|> blockCommand)
+  snd <$> (rawSileParser False macroDef blocks
+      <|> (rawSileParser True
+             (do choice (map controlSeq
+                   ["include", "input", "subfile", "usepackage"])
+                 skipMany opt
+                 braced
+                 return mempty) blocks)
+      <|> rawSileParser True
+           (environment <|> blockCommand)
+           (mconcat <$> (many (block <|> beginOrEndCommand))))
 
-rawSileInline :: (PandocMonad m, HasReaderOptions s)
+-- See #4667 for motivation; sometimes people write macros
+-- that just evaluate to a begin or end command, which blockCommand
+-- won't accept.
+beginOrEndCommand :: PandocMonad m => LP m Blocks
+beginOrEndCommand = try $ do
+  Tok _ (CtrlSeq name) txt <- anyControlSeq
+  guard $ name == "begin" || name == "end"
+  (envname, rawargs) <- withRaw braced
+  if M.member (untokenize envname)
+      (inlineEnvironments :: M.Map Text (LP PandocPure Inlines))
+     then mzero
+     else return $ rawBlock "latex"
+                    (T.unpack (txt <> untokenize rawargs))
+
+rawSileInline :: (PandocMonad m, HasMacros s, HasReaderOptions s)
                => ParserT String s m String
-rawSileInline = do
-  lookAhead (try (char '\\' >> letter) <|> char '$')
-  rawSileParser (inlineEnvironment <|> inlineCommand')
+rawLaTeXInline = do
+  lookAhead (try (char '\\' >> letter))
+  snd <$> (  rawSileParser True
+              (mempty <$ (controlSeq "input" >> skipMany opt >> braced))
+              inlines
+        <|> rawSileParser True (inlineEnvironment <|> inlineCommand') inlines)
 
 inlineCommand :: PandocMonad m => ParserT String ParserState m Inlines
 inlineCommand = do
-  lookAhead (try (char '\\' >> letter) <|> char '$')
-  inp <- getInput
-  let toks = tokenize "chunk" $ T.pack inp
-  let rawinline = do
-         (il, raw) <- try $ withRaw (inlineEnvironment <|> inlineCommand')
-         st <- getState
-         return (il, raw, st)
-  pstate <- getState
-  let lstate = def{ sOptions = extractReaderOptions pstate
-                  }
-  res <- runParserT rawinline lstate "source" toks
-  case res of
-       Left _ -> mzero
-       Right (il, raw, _) -> do
-         takeP (T.length (untokenize raw))
-         return il
-
-isSpaceOrTab :: Char -> Bool
-isSpaceOrTab ' '  = True
-isSpaceOrTab '\t' = True
-isSpaceOrTab _    = False
-
-isLetterOrAt :: Char -> Bool
-isLetterOrAt '@'  = True
-isLetterOrAt c    = isLetter c
-
-isLowerHex :: Char -> Bool
-isLowerHex x = x >= '0' && x <= '9' || x >= 'a' && x <= 'f'
-
-untokenize :: [Tok] -> Text
-untokenize = mconcat . map untoken
-
-untoken :: Tok -> Text
-untoken (Tok _ _ t) = t
-
-satisfyTok :: PandocMonad m => (Tok -> Bool) -> LP m Tok
-satisfyTok f =
-  try $ do
-    res <- tokenPrim (T.unpack . untoken) updatePos matcher
-    return res
-  where matcher t | f t       = Just t
-                  | otherwise = Nothing
-        updatePos :: SourcePos -> Tok -> [Tok] -> SourcePos
-        updatePos _spos _ (Tok pos _ _ : _) = pos
-        updatePos spos _ [] = spos
-
-anyControlSeq :: PandocMonad m => LP m Tok
-anyControlSeq = satisfyTok isCtrlSeq
-  where isCtrlSeq (Tok _ (CtrlSeq _) _) = True
-        isCtrlSeq _                     = False
-
-spaces :: PandocMonad m => LP m ()
-spaces = skipMany (satisfyTok (tokTypeIn [Comment, Spaces, Newline]))
-
-spaces1 :: PandocMonad m => LP m ()
-spaces1 = skipMany1 (satisfyTok (tokTypeIn [Comment, Spaces, Newline]))
-
-tokTypeIn :: [TokType] -> Tok -> Bool
-tokTypeIn toktypes (Tok _ tt _) = tt `elem` toktypes
-
-controlSeq :: PandocMonad m => Text -> LP m Tok
-controlSeq name = satisfyTok isNamed
-  where isNamed (Tok _ (CtrlSeq n) _) = n == name
-        isNamed _ = False
-
-symbol :: PandocMonad m => Char -> LP m Tok
-symbol c = satisfyTok isc
-  where isc (Tok _ Symbol d) = case T.uncons d of
-                                    Just (c',_) -> c == c'
-                                    _ -> False
-        isc _ = False
-
-symbolIn :: PandocMonad m => [Char] -> LP m Tok
-symbolIn cs = satisfyTok isInCs
-  where isInCs (Tok _ Symbol d) = case T.uncons d of
-                                       Just (c,_) -> c `elem` cs
-                                       _ -> False
-        isInCs _ = False
-
-sp :: PandocMonad m => LP m ()
-sp = whitespace <|> endline
-
-whitespace :: PandocMonad m => LP m ()
-whitespace = () <$ satisfyTok isSpaceTok
-  where isSpaceTok (Tok _ Spaces _) = True
-        isSpaceTok _ = False
-
-newlineTok :: PandocMonad m => LP m ()
-newlineTok = () <$ satisfyTok isNewlineTok
-
-isNewlineTok :: Tok -> Bool
-isNewlineTok (Tok _ Newline _) = True
-isNewlineTok _ = False
-
-comment :: PandocMonad m => LP m ()
-comment = () <$ satisfyTok isCommentTok
-  where isCommentTok (Tok _ Comment _) = True
-        isCommentTok _ = False
-
-anyTok :: PandocMonad m => LP m Tok
-anyTok = satisfyTok (const True)
-
-endline :: PandocMonad m => LP m ()
-endline = try $ do
-  newlineTok
-  lookAhead anyTok
-  notFollowedBy blankline
-
-blankline :: PandocMonad m => LP m ()
-blankline = try $ skipMany whitespace *> newlineTok
-
-primEscape :: PandocMonad m => LP m Char
-primEscape = do
-  Tok _ toktype t <- satisfyTok (tokTypeIn [Esc1, Esc2])
-  case toktype of
-       Esc1 -> case T.uncons (T.drop 2 t) of
-                    Just (c, _)
-                      | c >= '\64' && c <= '\127' -> return (chr (ord c - 64))
-                      | otherwise                 -> return (chr (ord c + 64))
-                    Nothing -> fail "Empty content of Esc1"
-       Esc2 -> case safeRead ('0':'x':T.unpack (T.drop 2 t)) of
-                    Just x -> return (chr x)
-                    Nothing -> fail $ "Could not read: " ++ T.unpack t
-       _    -> fail "Expected an Esc1 or Esc2 token" -- should not happen
-
-bgroup :: PandocMonad m => LP m Tok
-bgroup = try $ do
-  skipMany sp
-  symbol '{' <|> controlSeq "bgroup" <|> controlSeq "begingroup"
-
-egroup :: PandocMonad m => LP m Tok
-egroup = (symbol '}' <|> controlSeq "egroup" <|> controlSeq "endgroup")
-
-grouped :: (PandocMonad m,  Monoid a) => LP m a -> LP m a
-grouped parser = try $ do
-  bgroup
-  -- first we check for an inner 'grouped', because
-  -- {{a,b}} should be parsed the same as {a,b}
-  try (grouped parser <* egroup) <|> (mconcat <$> manyTill parser egroup)
-
-braced :: PandocMonad m => LP m [Tok]
-braced = bgroup *> braced' 1
-  where braced' (n :: Int) =
-          handleEgroup n <|> handleBgroup n <|> handleOther n
-        handleEgroup n = do
-          t <- egroup
-          if n == 1
-             then return []
-             else (t:) <$> braced' (n - 1)
-        handleBgroup n = do
-          t <- bgroup
-          (t:) <$> braced' (n + 1)
-        handleOther n = do
-          t <- anyTok
-          (t:) <$> braced' n
-
-bracketed :: PandocMonad m => Monoid a => LP m a -> LP m a
-bracketed parser = try $ do
-  symbol '['
-  mconcat <$> manyTill parser (symbol ']')
-
-dimenarg :: PandocMonad m => LP m Text
-dimenarg = try $ do
-  ch  <- option False $ True <$ symbol '='
-  Tok _ _ s <- satisfyTok isWordTok
-  guard $ (T.take 2 (T.reverse s)) `elem`
-           ["pt","pc","in","bp","cm","mm","dd","cc","sp"]
-  let num = T.take (T.length s - 2) s
-  guard $ T.length num > 0
-  guard $ T.all isDigit num
-  return $ T.pack ['=' | ch] <> s
+  lookAhead (try (char '\\' >> letter))
+  fst <$> rawSileParser True (inlineEnvironment <|> inlineCommand') inlines
 
 -- inline elements:
 
@@ -425,15 +186,8 @@ word = (str . T.unpack . untoken) <$> satisfyTok isWordTok
 regularSymbol :: PandocMonad m => LP m Inlines
 regularSymbol = (str . T.unpack . untoken) <$> satisfyTok isRegularSymbol
   where isRegularSymbol (Tok _ Symbol t) = not $ T.any isSpecial t
-        isRegularSymbol _ = False
+        isRegularSymbol _                = False
         isSpecial c = c `Set.member` specialChars
-
-specialChars :: Set.Set Char
-specialChars = Set.fromList "#$%&~_^\\{}"
-
-isWordTok :: Tok -> Bool
-isWordTok (Tok _ Word _) = True
-isWordTok _ = False
 
 inlineGroup :: PandocMonad m => LP m Inlines
 inlineGroup = do
@@ -451,24 +205,24 @@ lit = pure . str
 doubleQuote :: PandocMonad m => LP m Inlines
 doubleQuote = do
        quoted' doubleQuoted (try $ count 2 $ symbol '`')
-                            (void $ try $ count 2 $ symbol '\'')
+                     (void $ try $ count 2 $ symbol '\'')
    <|> quoted' doubleQuoted ((:[]) <$> symbol '“') (void $ symbol '”')
    -- the following is used by babel for localized quotes:
    <|> quoted' doubleQuoted (try $ sequence [symbol '"', symbol '`'])
                             (void $ try $ sequence [symbol '"', symbol '\''])
 
 singleQuote :: PandocMonad m => LP m Inlines
-singleQuote = do
+singleQuote =
        quoted' singleQuoted ((:[]) <$> symbol '`')
-                            (try $ symbol '\'' >>
-                                  notFollowedBy (satisfyTok startsWithLetter))
+                     (try $ symbol '\'' >>
+                           notFollowedBy (satisfyTok startsWithLetter))
    <|> quoted' singleQuoted ((:[]) <$> symbol '‘')
                             (try $ symbol '’' >>
                                   notFollowedBy (satisfyTok startsWithLetter))
   where startsWithLetter (Tok _ Word t) =
           case T.uncons t of
                Just (c, _) | isLetter c -> True
-               _ -> False
+               _           -> False
         startsWithLetter _ = False
 
 quoted' :: PandocMonad m
@@ -544,7 +298,6 @@ overlayTok =
 
 inBrackets :: Inlines -> Inlines
 inBrackets x = str "[" <> x <> str "]"
-
 
 unescapeURL :: String -> String
 unescapeURL ('\\':x:xs) | isEscapable x = x:unescapeURL xs
