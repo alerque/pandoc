@@ -41,15 +41,12 @@ module Text.Pandoc.Readers.Sile.Parsing
   , LP
   , withVerbatimMode
   , rawSileParser
-  , applyMacros
   , tokenize
   , untokenize
   , untoken
   , totoks
   , toksToString
   , satisfyTok
-  , doMacros
-  , doMacros'
   , setpos
   , anyControlSeq
   , anySymbol
@@ -106,7 +103,7 @@ import Text.Pandoc.Logging
 import Text.Pandoc.Options
 import Text.Pandoc.Parsing hiding (blankline, many, mathDisplay, mathInline,
                             space, spaces, withRaw, (<|>))
-import Text.Pandoc.Readers.Sile.Types (ExpansionPoint (..), Macro (..),
+import Text.Pandoc.Readers.Sile.Types (ExpansionPoint (..),
                                         ArgSpec (..), Tok (..), TokType (..))
 import Text.Pandoc.Shared
 import Text.Parsec.Pos
@@ -129,7 +126,6 @@ incrementDottedNum level (DottedNum ns) = DottedNum $
 data SileState = SileState{ sOptions       :: ReaderOptions
                             , sMeta          :: Meta
                             , sQuoteContext  :: QuoteContext
-                            , sMacros        :: M.Map Text Macro
                             , sContainers    :: [String]
                             , sLogMessages   :: [LogMessage]
                             , sIdentifiers   :: Set.Set String
@@ -150,7 +146,6 @@ defaultSileState :: SileState
 defaultSileState = SileState{ sOptions       = def
                               , sMeta          = nullMeta
                               , sQuoteContext  = NoQuote
-                              , sMacros        = M.empty
                               , sContainers    = []
                               , sLogMessages   = []
                               , sIdentifiers   = Set.empty
@@ -190,10 +185,6 @@ instance HasIncludeFiles SileState where
   addIncludeFile f s = s{ sContainers = f : sContainers s }
   dropLatestIncludeFile s = s { sContainers = drop 1 $ sContainers s }
 
-instance HasMacros SileState where
-  extractMacros  st  = sMacros st
-  updateMacros f st  = st{ sMacros = f (sMacros st) }
-
 instance HasReaderOptions SileState where
   extractReaderOptions = sOptions
 
@@ -219,22 +210,20 @@ withVerbatimMode parser = do
        updateState $ \st -> st{ sVerbatimMode = False }
        return result
 
-rawSileParser :: (PandocMonad m, HasMacros s, HasReaderOptions s)
+rawSileParser :: (PandocMonad m, HasReaderOptions s)
                => Bool -> LP m a -> LP m a -> ParserT String s m (a, String)
 rawSileParser retokenize parser valParser = do
   inp <- getInput
   let toks = tokenize "source" $ T.pack inp
   pstate <- getState
   let lstate = def{ sOptions = extractReaderOptions pstate }
-  let lstate' = lstate { sMacros = extractMacros pstate }
+  let lstate' = lstate
   let rawparser = (,) <$> withRaw valParser <*> getState
   res' <- lift $ runParserT (snd <$> withRaw parser) lstate "chunk" toks
   case res' of
        Left _    -> mzero
        Right toks' -> do
          res <- lift $ runParserT (do when retokenize $ do
-                                        -- retokenize, applying macros
-                                        doMacros
                                         ts <- many (satisfyTok (const True))
                                         setInput ts
                                       rawparser)
@@ -242,21 +231,8 @@ rawSileParser retokenize parser valParser = do
          case res of
               Left _    -> mzero
               Right ((val, raw), st) -> do
-                updateState (updateMacros (sMacros st <>))
                 _ <- takeP (T.length (untokenize toks'))
                 return (val, T.unpack (untokenize raw))
-
-applyMacros :: (PandocMonad m, HasMacros s, HasReaderOptions s)
-            => String -> ParserT String s m String
-applyMacros s = (guardDisabled Ext_sile_macros >> return s) <|>
-   do let retokenize = toksToString <$> many (satisfyTok (const True))
-      pstate <- getState
-      let lstate = def{ sOptions = extractReaderOptions pstate
-                      , sMacros  = extractMacros pstate }
-      res <- runParserT retokenize lstate "math" (tokenize "math" (T.pack s))
-      case res of
-           Left e   -> fail (show e)
-           Right s' -> return s'
 
 tokenize :: SourceName -> Text -> [Tok]
 tokenize sourcename = totoks (initialPos sourcename)
@@ -287,7 +263,6 @@ totoks pos t =
                 Nothing -> [Tok pos (CtrlSeq " ") "\\"]
                 Just (d, rest')
                   | isLetterOrAt d ->
-                      -- \makeatletter is common in macro defs;
                       -- ideally we should make tokenization sensitive
                       -- to \makeatletter and \makeatother, but this is
                       -- probably best for now
@@ -372,7 +347,6 @@ toksToString = T.unpack . untokenize
 
 satisfyTok :: PandocMonad m => (Tok -> Bool) -> LP m Tok
 satisfyTok f = do
-    doMacros -- apply macros on remaining input stream
     res <- tokenPrim (T.unpack . untoken) updatePos matcher
     updateState $ \st -> st{ sExpanded = False }
     return res
@@ -382,97 +356,6 @@ satisfyTok f = do
         updatePos _spos _ (Tok pos _ _ : _) = pos
         updatePos spos _ []                 = incSourceColumn spos 1
 
-doMacros :: PandocMonad m => LP m ()
-doMacros = do
-  expanded <- sExpanded <$> getState
-  verbatimMode <- sVerbatimMode <$> getState
-  unless (expanded || verbatimMode) $ do
-      getInput >>= doMacros' 1 >>= setInput
-      updateState $ \st -> st{ sExpanded = True }
-
-doMacros' :: PandocMonad m => Int -> [Tok] -> LP m [Tok]
-doMacros' n inp = do
-  case inp of
-     Tok spos (CtrlSeq "begin") _ : Tok _ Symbol "{" :
-      Tok _ Word name : Tok _ Symbol "}" : ts
-        -> handleMacros n spos name ts
-     Tok spos (CtrlSeq "end") _ : Tok _ Symbol "{" :
-      Tok _ Word name : Tok _ Symbol "}" : ts
-        -> handleMacros n spos ("end" <> name) ts
-     Tok _ (CtrlSeq "expandafter") _ : t : ts
-        -> combineTok t <$> doMacros' n ts
-     Tok spos (CtrlSeq name) _ : ts
-        -> handleMacros n spos name ts
-     _ -> return inp
-   <|> return inp
-
-  where
-    combineTok (Tok spos (CtrlSeq name) x) (Tok _ Word w : ts)
-      | T.all isLetterOrAt w =
-        Tok spos (CtrlSeq (name <> w)) (x1 <> w <> x2) : ts
-          where (x1, x2) = T.break isSpaceOrTab x
-    combineTok t ts = t:ts
-
-    matchTok (Tok _ toktype txt) =
-      satisfyTok (\(Tok _ toktype' txt') ->
-                    toktype == toktype' &&
-                    txt == txt')
-
-    matchPattern toks = try $ mapM_ matchTok toks
-
-    getargs argmap [] = return argmap
-    getargs argmap (Pattern toks : rest) = try $ do
-       matchPattern toks
-       getargs argmap rest
-    getargs argmap (ArgNum i : Pattern toks : rest) =
-      try $ do
-        x <- mconcat <$> manyTill (braced <|> ((:[]) <$> anyTok))
-                  (matchPattern toks)
-        getargs (M.insert i x argmap) rest
-    getargs argmap (ArgNum i : rest) = do
-      x <- try $ spaces >> bracedOrToken
-      getargs (M.insert i x argmap) rest
-
-    addTok False args spos (Tok _ (Arg i) _) acc =
-       case M.lookup i args of
-            Nothing -> mzero
-            Just xs -> foldr (addTok True args spos) acc xs
-    -- see #4007
-    addTok _ _ spos (Tok _ (CtrlSeq x) txt)
-           acc@(Tok _ Word _ : _)
-      | not (T.null txt)
-      , isLetter (T.last txt) =
-        Tok spos (CtrlSeq x) (txt <> " ") : acc
-    addTok _ _ spos t acc = setpos spos t : acc
-
-    handleMacros n' spos name ts = do
-      when (n' > 20)  -- detect macro expansion loops
-        $ throwError $ PandocMacroLoop (T.unpack name)
-      macros <- sMacros <$> getState
-      case M.lookup name macros of
-           Nothing -> mzero
-           Just (Macro expansionPoint argspecs optarg newtoks) -> do
-             let getargs' = do
-                   args <- case optarg of
-                             Nothing -> getargs M.empty argspecs
-                             Just o  -> do
-                                x <- option o bracketedToks
-                                getargs (M.singleton 1 x) argspecs
-                   rest <- getInput
-                   return (args, rest)
-             lstate <- getState
-             res <- lift $ runParserT getargs' lstate "args" ts
-             case res of
-               Left _ -> fail $ "Could not parse arguments for " ++
-                                T.unpack name
-               Right (args, rest) -> do
-                 -- first boolean param is true if we're tokenizing
-                 -- an argument (in which case we don't want to
-                 -- expand #1 etc.)
-                 let result = foldr (addTok False args spos) rest newtoks
-                 case expansionPoint of
-                   ExpandWhenUsed    -> doMacros' (n' + 1) result
-                   ExpandWhenDefined -> return result
 
 setpos :: SourcePos -> Tok -> Tok
 setpos spos (Tok _ tt txt) = Tok spos tt txt
