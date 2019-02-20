@@ -484,7 +484,7 @@ sectionHeader unnumbered ident level lst = do
                          <> braces (text plain))
   book <- gets stBook
   opts <- gets stOptions
-  let topLevelDivision = if book && writerTopLevelDivision opts == TopLevelDefault
+  let topLevelDivision = if writerTopLevelDivision opts == TopLevelDefault
                          then TopLevelChapter
                          else writerTopLevelDivision opts
   let level' = if
