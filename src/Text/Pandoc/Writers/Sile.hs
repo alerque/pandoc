@@ -487,10 +487,7 @@ sectionHeader unnumbered ident level lst = do
   let topLevelDivision = if writerTopLevelDivision opts == TopLevelDefault
                          then TopLevelChapter
                          else writerTopLevelDivision opts
-  let level' = if
-                  topLevelDivision `elem` [TopLevelPart, TopLevelChapter]
-               then if level == 1 then -1 else level - 1
-               else case topLevelDivision of
+  let level' = case topLevelDivision of
                       TopLevelPart    -> level - 2
                       TopLevelChapter -> level - 1
                       TopLevelSection -> level
