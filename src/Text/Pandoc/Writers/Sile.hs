@@ -103,7 +103,6 @@ type LW m = StateT WriterState m
 pandocToSile :: PandocMonad m
               => WriterOptions -> Pandoc -> LW m Text
 pandocToSile options (Pandoc meta blocks) = do
-  let method = writerCiteMethod options
   let blocks' = blocks
   -- see if there are internal links
   let isInternalLink (Link _ _ ('#':xs,_)) = [xs]
@@ -131,14 +130,13 @@ pandocToSile options (Pandoc meta blocks) = do
          Nothing | documentClass `elem` bookClasses
                                         -> modify $ \s -> s{stBook = True}
                  | otherwise               -> return ()
-  let (blocks'', lastHeader) = if writerCiteMethod options == Citeproc then
+  let (blocks'', _) = if writerCiteMethod options == Citeproc then
                                  (blocks', [])
                                else case last blocks' of
                                  Header 1 _ il -> (init blocks', il)
                                  _             -> (blocks', [])
   blocks''' <- return blocks''
   body <- mapM (elementToSile options) $ hierarchicalize blocks'''
-  (biblioTitle :: String) <- liftM (render colwidth) $ inlineListToSile lastHeader
   let main = render' $ vsep body
   st <- get
   titleMeta <- stringToSile TextString $ stringify $ docTitle meta
@@ -303,7 +301,7 @@ blockToSile (BlockQuote lst) = do
          contents <- blockListToSile lst
          modify (\s -> s{stInQuote = oldInQuote})
          return $ "\\begin{quote}" $$ contents $$ "\\end{quote}"
-blockToSile (CodeBlock (identifier,classes,keyvalAttr) str) = do
+blockToSile (CodeBlock (identifier,classes,_) str) = do
   opts <- gets stOptions
   lab <- labelFor identifier
   linkAnchor' <- hypertarget True identifier lab
@@ -315,7 +313,6 @@ blockToSile (CodeBlock (identifier,classes,keyvalAttr) str) = do
         return $ flush (linkAnchor $$ "\\begin{code}" $$ text str $$
                             "\\end{code}") $$ cr
   let rawCodeBlock = do
-        st <- get
         env <- return "verbatim"
         return $ flush (linkAnchor $$ text ("\\begin{" ++ env ++ "}") $$
                  text str $$ text ("\\end{" ++ env ++ "}")) <> cr
