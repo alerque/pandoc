@@ -103,18 +103,13 @@ type LW m = StateT WriterState m
 pandocToSile :: PandocMonad m
               => WriterOptions -> Pandoc -> LW m Text
 pandocToSile options (Pandoc meta blocks) = do
-  -- Strip off final 'references' header if --natbib or --biblatex
   let method = writerCiteMethod options
-  let blocks' = if method == Biblatex || method == Natbib
-                   then case reverse blocks of
-                             (Div (_,["references"],_) _):xs -> reverse xs
-                             _                               -> blocks
-                   else blocks
+  let blocks' = blocks
   -- see if there are internal links
   let isInternalLink (Link _ _ ('#':xs,_)) = [xs]
       isInternalLink _                     = []
   modify $ \s -> s{ stInternalLinks = query isInternalLink blocks' }
-  let template = maybe "" id $ writerTemplate options
+  let template = fromMaybe "" $ writerTemplate options
   -- set stBook depending on documentclass
   let colwidth = if writerWrapText options == WrapAuto
                     then Just $ writerColumns options
@@ -177,10 +172,6 @@ pandocToSile options (Pandoc meta blocks) = do
                   defField "graphics" (stGraphics st) $
                   defField "book-class" (stBook st) $
                   (case writerCiteMethod options of
-                         Natbib   -> defField "biblio-title" biblioTitle .
-                                     defField "natbib" True
-                         Biblatex -> defField "biblio-title" biblioTitle .
-                                     defField "biblatex" True
                          _        -> id) $
                   defField "colorlinks" (any hasStringValue
                            ["citecolor", "urlcolor", "linkcolor", "toccolor"]) $
@@ -339,7 +330,7 @@ blockToSile b@(RawBlock f x)
   | otherwise           = do
       report $ BlockNotRendered b
       return empty
-blockToSile (BulletList []) = return empty  -- otherwise latex error
+blockToSile (BulletList []) = return empty  -- otherwise sile error
 blockToSile (BulletList lst) = do
   items <- mapM listItemToSile lst
   return $ text ("\\begin{listarea}") $$ vcat items $$
@@ -436,7 +427,6 @@ tableRowToSile header aligns widths cols = do
   cells <- mapM (tableCellToSile header) $ zip3 widths' aligns cols
   return $ hsep (intersperse "&" cells) <> "\\tabularnewline"
 
--- For simple latex tables (without minipages or parboxes),
 -- we need to go to some lengths to get line breaks working:
 -- as LineBreak bs = \vtop{\hbox{\strut as}\hbox{\strut bs}}.
 fixLineBreaks :: Block -> Block
@@ -625,7 +615,6 @@ inlineToSile (Cite cits lst) = do
   let opts = stOptions st
   case writerCiteMethod opts of
      Natbib   -> citationsToNatbib cits
-     Biblatex -> citationsToBiblatex cits
      _        -> inlineListToSile lst
 
 inlineToSile (Code (_,_,_) str) =
@@ -785,35 +774,6 @@ citeArguments p s k = do
                      (_   , _    ) -> brackets pdoc <> brackets sdoc
   return $ optargs <> braces (text k)
 
-citationsToBiblatex :: PandocMonad m => [Citation] -> LW m Doc
-citationsToBiblatex (one:[])
-  = citeCommand cmd p s k
-    where
-       Citation { citationId = k
-                , citationPrefix = p
-                , citationSuffix = s
-                , citationMode = m
-                } = one
-       cmd = case m of
-                  SuppressAuthor -> "autocite*"
-                  AuthorInText   -> "textcite"
-                  NormalCitation -> "autocite"
-
-citationsToBiblatex (c:cs) = do
-  args <- mapM convertOne (c:cs)
-  return $ text cmd <> foldl' (<>) empty args
-    where
-       cmd = case citationMode c of
-                  SuppressAuthor -> "\\autocites*"
-                  AuthorInText   -> "\\textcites"
-                  NormalCitation -> "\\autocites"
-       convertOne Citation { citationId = k
-                           , citationPrefix = p
-                           , citationSuffix = s
-                           }
-              = citeArguments p s k
-
-citationsToBiblatex _ = return empty
 
 
 pDocumentOptions :: P.Parsec String () [String]
