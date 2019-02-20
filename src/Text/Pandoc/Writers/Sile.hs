@@ -39,7 +39,7 @@ import Control.Applicative ((<|>))
 import Control.Monad.State.Strict
 import Data.Char (isAscii, isDigit, isLetter, isPunctuation, ord)
 import Data.List (foldl', intercalate, intersperse, stripPrefix, )
-import Data.Maybe (catMaybes, isJust)
+import Data.Maybe (catMaybes, fromMaybe, isJust)
 import Data.Text (Text)
 import Network.URI (unEscapeString)
 import Text.Pandoc.Class (PandocMonad, report)
