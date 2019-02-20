@@ -35,7 +35,6 @@ Conversion of Sile to 'Pandoc' document.
 
 -}
 module Text.Pandoc.Readers.Sile (  readSile,
-                                   applyMacros,
                                    rawSileInline,
                                    rawSileBlock,
                                    inlineCommand,
@@ -67,7 +66,7 @@ import Text.Pandoc.Logging
 import Text.Pandoc.Options
 import Text.Pandoc.Parsing hiding (blankline, many, mathDisplay, mathInline,
                             optional, space, spaces, withRaw, (<|>))
-import Text.Pandoc.Readers.Sile.Types (ExpansionPoint (..), Macro (..),
+import Text.Pandoc.Readers.Sile.Types (ExpansionPoint (..),
                                         ArgSpec (..), Tok (..), TokType (..))
 import Text.Pandoc.Readers.Sile.Parsing
 import Text.Pandoc.Shared
@@ -136,22 +135,14 @@ resolveRefs _ x = x
 --        Right r -> return r
 
 
-rawSileBlock :: (PandocMonad m, HasMacros s, HasReaderOptions s)
+rawSileBlock :: (PandocMonad m, HasReaderOptions s)
               => ParserT String s m String
 rawSileBlock = do
   lookAhead (try (char '\\' >> letter))
-  snd <$> (rawSileParser False macroDef blocks
-      <|> (rawSileParser True
-             (do choice (map controlSeq
-                   ["include", "input", "subfile", "usepackage"])
-                 skipMany opt
-                 braced
-                 return mempty) blocks)
-      <|> rawSileParser True
+  snd <$> rawSileParser True
            (environment <|> blockCommand)
-           (mconcat <$> (many (block <|> beginOrEndCommand))))
+           (mconcat <$> (many (block <|> beginOrEndCommand)))
 
--- See #4667 for motivation; sometimes people write macros
 -- that just evaluate to a begin or end command, which blockCommand
 -- won't accept.
 beginOrEndCommand :: PandocMonad m => LP m Blocks
@@ -165,7 +156,7 @@ beginOrEndCommand = try $ do
      else return $ rawBlock "sile"
                     (T.unpack (txt <> untokenize rawargs))
 
-rawSileInline :: (PandocMonad m, HasMacros s, HasReaderOptions s)
+rawSileInline :: (PandocMonad m, HasReaderOptions s)
                => ParserT String s m String
 rawSileInline = do
   lookAhead (try (char '\\' >> letter))
@@ -557,7 +548,7 @@ end_ t = try (do
 preamble :: PandocMonad m => LP m Blocks
 preamble = mempty <$ many preambleBlock
   where preambleBlock =  spaces1
-                     <|> void (macroDef <|> blockCommand)
+                     <|> void (blockCommand)
                      <|> void braced
                      <|> (notFollowedBy (begin_ "document") >> void anyTok)
 
@@ -614,50 +605,6 @@ authors = try $ do
   egroup
   addMeta "author" (map trimInlines auths)
 
-macroDef :: (Monoid a, PandocMonad m) => LP m a
-macroDef =
-  mempty <$ (commandDef <|> environmentDef)
-  where commandDef = do
-          (name, macro') <- newcommand <|> letmacro <|> defmacro
-          guardDisabled Ext_sile_macros <|>
-           updateState (\s -> s{ sMacros = M.insert name macro' (sMacros s) })
-        environmentDef = do
-          (name, macro1, macro2) <- newenvironment
-          guardDisabled Ext_sile_macros <|>
-            do updateState $ \s -> s{ sMacros =
-                M.insert name macro1 (sMacros s) }
-               updateState $ \s -> s{ sMacros =
-                M.insert ("end" <> name) macro2 (sMacros s) }
-        -- @\newenvironment{envname}[n-args][default]{begin}{end}@
-        -- is equivalent to
-        -- @\newcommand{\envname}[n-args][default]{begin}@
-        -- @\newcommand{\endenvname}@
-
-letmacro :: PandocMonad m => LP m (Text, Macro)
-letmacro = do
-  controlSeq "let"
-  (name, contents) <- withVerbatimMode $ do
-    Tok _ (CtrlSeq name) _ <- anyControlSeq
-    optional $ symbol '='
-    spaces
-    -- we first parse in verbatim mode, and then expand macros,
-    -- because we don't want \let\foo\bar to turn into
-    -- \let\foo hello if we have previously \def\bar{hello}
-    contents <- bracedOrToken
-    return (name, contents)
-  contents' <- doMacros' 0 contents
-  return (name, Macro ExpandWhenDefined [] Nothing contents')
-
-defmacro :: PandocMonad m => LP m (Text, Macro)
-defmacro = try $
-  -- we use withVerbatimMode, because macros are to be expanded
-  -- at point of use, not point of definition
-  withVerbatimMode $ do
-    controlSeq "def"
-    Tok _ (CtrlSeq name) _ <- anyControlSeq
-    argspecs <- many (argspecArg <|> argspecPattern)
-    contents <- bracedOrToken
-    return (name, Macro ExpandWhenUsed argspecs Nothing contents)
 
 argspecArg :: PandocMonad m => LP m ArgSpec
 argspecArg = do
@@ -670,66 +617,7 @@ argspecPattern =
                               (toktype' == Symbol || toktype' == Word) &&
                               (txt /= "{" && txt /= "\\" && txt /= "}")))
 
-newcommand :: PandocMonad m => LP m (Text, Macro)
-newcommand = do
-  pos <- getPosition
-  Tok _ (CtrlSeq mtype) _ <- controlSeq "newcommand" <|>
-                             controlSeq "renewcommand" <|>
-                             controlSeq "providecommand" <|>
-                             controlSeq "DeclareMathOperator" <|>
-                             controlSeq "DeclareRobustCommand"
-  withVerbatimMode $ do
-    Tok _ (CtrlSeq name) txt <- do
-      optional (symbol '*')
-      anyControlSeq <|>
-        (symbol '{' *> spaces *> anyControlSeq <* spaces <* symbol '}')
-    spaces
-    numargs <- option 0 $ try bracketedNum
-    let argspecs = map (\i -> ArgNum i) [1..numargs]
-    spaces
-    optarg <- option Nothing $ Just <$> try bracketedToks
-    spaces
-    contents' <- bracedOrToken
-    let contents =
-         case mtype of
-              "DeclareMathOperator" ->
-                 Tok pos (CtrlSeq "mathop") "\\mathop"
-                 : Tok pos (CtrlSeq "mathrm") "\\mathrm"
-                 : Tok pos Symbol "{"
-                 : (contents' ++
-                   [ Tok pos Symbol "}" ])
-              _                     -> contents'
-    when (mtype == "newcommand") $ do
-      macros <- sMacros <$> getState
-      case M.lookup name macros of
-           Just _  -> report $ MacroAlreadyDefined (T.unpack txt) pos
-           Nothing -> return ()
-    return (name, Macro ExpandWhenUsed argspecs optarg contents)
 
-newenvironment :: PandocMonad m => LP m (Text, Macro, Macro)
-newenvironment = do
-  pos <- getPosition
-  Tok _ (CtrlSeq mtype) _ <- controlSeq "newenvironment" <|>
-                             controlSeq "renewenvironment" <|>
-                             controlSeq "provideenvironment"
-  withVerbatimMode $ do
-    optional $ symbol '*'
-    spaces
-    name <- untokenize <$> braced
-    spaces
-    numargs <- option 0 $ try bracketedNum
-    spaces
-    optarg <- option Nothing $ Just <$> try bracketedToks
-    let argspecs = map (\i -> ArgNum i) [1..numargs]
-    startcontents <- spaces >> bracedOrToken
-    endcontents <- spaces >> bracedOrToken
-    when (mtype == "newenvironment") $ do
-      macros <- sMacros <$> getState
-      case M.lookup name macros of
-           Just _  -> report $ MacroAlreadyDefined (T.unpack name) pos
-           Nothing -> return ()
-    return (name, Macro ExpandWhenUsed argspecs optarg startcontents,
-             Macro ExpandWhenUsed [] Nothing endcontents)
 
 bracketedNum :: PandocMonad m => LP m Int
 bracketedNum = do
