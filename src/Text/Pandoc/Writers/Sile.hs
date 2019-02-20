@@ -238,52 +238,13 @@ blockToSile :: PandocMonad m
              => Block     -- ^ Block to convert
              -> LW m Doc
 blockToSile Null = return empty
-blockToSile (Div (identifier,classes,kvs) bs)
-  | "incremental" `elem` classes = do
-      let classes' = filter ("incremental"/=) classes
-      blockToSile $ Div (identifier,classes',kvs) bs
-  | "nonincremental" `elem` classes = do
-      let classes' = filter ("nonincremental"/=) classes
-      blockToSile $ Div (identifier,classes',kvs) bs
-  | otherwise = do
-      linkAnchor' <- hypertarget True identifier empty
-    -- see #2704 for the motivation for adding \leavevmode:
-      let linkAnchor =
-            case bs of
-              Para _ : _
-                | not (isEmpty linkAnchor')
-                  -> "\\leavevmode" <> linkAnchor' <> "%"
-              _ -> linkAnchor'
-      let align dir txt = inCmd "begin" dir $$ txt $$ inCmd "end" dir
-      let wrapColumns = if "columns" `elem` classes
-                        then \contents ->
-                               inCmd "begin" "columns" <> brackets "T"
-                               $$ contents
-                               $$ inCmd "end" "columns"
-                        else id
-          wrapColumn  = if "column" `elem` classes
-                        then \contents ->
-                               let w = maybe "0.48" fromPct (lookup "width" kvs)
-                               in  inCmd "begin" "column" <>
-                                   braces (text w <> "\\textwidth")
-                                   $$ contents
-                                   $$ inCmd "end" "column"
-                        else id
-          fromPct xs =
-            case reverse xs of
-              '%':ds -> case safeRead (reverse ds) of
-                          Just digits -> showFl (digits / 100 :: Double)
-                          Nothing -> xs
-              _      -> xs
-          wrapDir = case lookup "dir" kvs of
-                      Just "rtl" -> align "RTL"
-                      Just "ltr" -> align "LTR"
-                      _          -> id
-          wrapNotes txt = if "notes" `elem` classes
-                          then "\\note" <> braces txt -- speaker notes
-                          else linkAnchor $$ txt
-      (wrapColumns . wrapColumn . wrapDir . wrapNotes)
-        <$> blockListToSile bs
+blockToSile (Div (identifier,classes,kvs) bs) = do
+  ref <- toLabel identifier
+  let linkAnchor = if null identifier
+                      then empty
+                      else "\\pdf:link" <> braces (text ref)
+  contents <- blockListToSile bs
+  return (linkAnchor $$ contents)
 blockToSile (Plain lst) =
   inlineListToSile $ dropWhile isLineBreakOrSpace lst
 -- title beginning with fig: indicates that the image is a figure
@@ -301,13 +262,27 @@ blockToSile (BlockQuote lst) = do
          contents <- blockListToSile lst
          modify (\s -> s{stInQuote = oldInQuote})
          return $ "\\begin{quote}" $$ contents $$ "\\end{quote}"
-blockToSile (CodeBlock (identifier,classes,_) str) = do
+blockToSile (CodeBlock (identifier,classes,keyvalAttr) str) = do
   opts <- gets stOptions
-  lab <- labelFor identifier
-  linkAnchor' <- hypertarget True identifier lab
-  let linkAnchor = if isEmpty linkAnchor'
+  ref <- toLabel identifier
+  str' <- stringToSile CodeString str
+  let classes' = [ val | (val) <- classes ]
+  let classes'' = intercalate ", " classes'
+  let params = (if identifier == ""
+                  then []
+                  else [ "id=" ++ ref ]) ++
+               (if null classes
+                  then []
+                  else [ "classes={" ++ classes'' ++ "}" ] ) ++
+                (if null keyvalAttr
+                  then []
+                  else [ key ++ "=" ++ attr | (key, attr) <- keyvalAttr ])
+      sileParams
+          | null params = empty
+          | otherwise = brackets $ hcat (intersperse ", " (map text params))
+  let linkAnchor = if null identifier
                       then empty
-                      else linkAnchor' <> "%"
+                      else "\\pdf:link" <> brackets (text ref) <> braces (text ref)
   let lhsCodeBlock = do
         modify $ \s -> s{ stLHS = True }
         return $ flush (linkAnchor $$ "\\begin{code}" $$ text str $$
@@ -529,30 +504,13 @@ sectionHeader unnumbered ident level lst = do
                           4  -> "paragraph"
                           5  -> "subparagraph"
                           _  -> ""
-  let prefix = empty
   lab <- labelFor ident
   let star = if unnumbered && level' < 4 then text "*" else empty
   let stuffing = star <> optional <> contents
-  stuffing' <- hypertarget True ident $
-                  text ('\\':sectionType) <> stuffing <> lab
   return $ if level' > 5
               then txt
-              else prefix $$ stuffing'
-                   $$ if unnumbered
-                         then "\\addcontentsline{toc}" <>
-                                braces (text sectionType) <>
-                                braces txtNoNotes
-                         else empty
+              else text ('\\':sectionType) <> stuffing
 
-hypertarget :: PandocMonad m => Bool -> String -> Doc -> LW m Doc
-hypertarget _ "" x    = return x
-hypertarget addnewline ident x = do
-  ref <- text `fmap` toLabel ident
-  return $ text "\\hypertarget"
-              <> braces ref
-              <> braces ((if addnewline && not (isEmpty x)
-                             then ("%" <> cr)
-                             else empty) <> x)
 
 labelFor :: PandocMonad m => String -> LW m Doc
 labelFor ""    = return empty
@@ -582,17 +540,15 @@ inlineListToSile lst =
 inlineToSile :: PandocMonad m
               => Inline    -- ^ Inline to convert
               -> LW m Doc
-inlineToSile (Span (id',classes,_) ils) = do
+inlineToSile (Span (id',classes,kvs) ils) = do
   ref <- toLabel id'
-  let linkAnchor = if null id'
-                      then empty
-                      else "\\protect\\pdf:link" <> braces (text ref)
   let cmds = ["textup" | "csl-no-emph" `elem` classes] ++
              ["textnormal" | "csl-no-strong" `elem` classes ||
-                             "csl-no-smallcaps" `elem` classes]
+                             "csl-no-smallcaps" `elem` classes] ++
+             ["RL" | ("dir", "rtl") `elem` kvs] ++
+             ["LR" | ("dir", "ltr") `elem` kvs]
   contents <- inlineListToSile ils
-  return $ linkAnchor <>
-          if null cmds
+  return $ if null cmds
               then braces contents
               else foldr inCmd contents cmds
 inlineToSile (Emph lst) =
