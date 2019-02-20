@@ -37,19 +37,13 @@ module Text.Pandoc.Writers.Sile (
 import Prelude
 import Control.Applicative ((<|>))
 import Control.Monad.State.Strict
-import Data.Aeson (FromJSON, object, (.=))
-import Data.Char (isAlphaNum, isAscii, isDigit, isLetter, isPunctuation, ord,
-                  toLower)
-import Data.List (foldl', intercalate, intersperse, isInfixOf, nubBy,
-                  stripPrefix, (\\), uncons)
-import Data.Maybe (catMaybes, fromMaybe, isJust, mapMaybe, isNothing)
-import qualified Data.Map as M
+import Data.Char (isAscii, isDigit, isLetter, isPunctuation, ord)
+import Data.List (foldl', intercalate, intersperse, stripPrefix, )
+import Data.Maybe (catMaybes, isJust)
 import Data.Text (Text)
-import qualified Data.Text as T
 import Network.URI (unEscapeString)
-import Text.Pandoc.Class (PandocMonad, report, toLang)
+import Text.Pandoc.Class (PandocMonad, report)
 import Text.Pandoc.Definition
-import Text.Pandoc.ImageSize
 import Text.Pandoc.Logging
 import Text.Pandoc.Options
 import Text.Pandoc.Pretty
@@ -59,7 +53,7 @@ import Text.Pandoc.Walk
 import Text.Pandoc.Writers.Shared
 import qualified Text.Parsec as P
 import Text.Printf (printf)
-import qualified Data.Text.Normalize as Normalize
+-- import qualified Data.Text.Normalize as Normalize
 
 data WriterState =
   WriterState {
