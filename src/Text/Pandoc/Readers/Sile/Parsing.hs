@@ -229,7 +229,7 @@ rawSileParser retokenize parser valParser = do
                         lstate "chunk" toks'
          case res of
               Left _    -> mzero
-              Right ((val, raw), st) -> do
+              Right ((val, raw)) -> do
                 _ <- takeP (T.length (untokenize toks'))
                 return (val, T.unpack (untokenize raw))
 
