@@ -216,7 +216,7 @@ rawSileParser retokenize parser valParser = do
   inp <- getInput
   let toks = tokenize "source" $ T.pack inp
   pstate <- getState
-  let lstate' = def{ sOptions = extractReaderOptions pstate }
+  let lstate = def{ sOptions = extractReaderOptions pstate }
   let rawparser = (,) <$> withRaw valParser <*> getState
   res' <- lift $ runParserT (snd <$> withRaw parser) lstate "chunk" toks
   case res' of
@@ -226,7 +226,7 @@ rawSileParser retokenize parser valParser = do
                                         ts <- many (satisfyTok (const True))
                                         setInput ts
                                       rawparser)
-                        lstate' "chunk" toks'
+                        lstate "chunk" toks'
          case res of
               Left _    -> mzero
               Right ((val, raw), st) -> do
