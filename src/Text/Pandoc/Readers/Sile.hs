@@ -65,10 +65,10 @@ import Text.Pandoc.ImageSize (numUnit, showFl)
 import Text.Pandoc.Logging
 import Text.Pandoc.Options
 import Text.Pandoc.Parsing hiding (blankline, many, mathDisplay, mathInline,
-                            optional, space, spaces, (<|>))
+                            optional, space, spaces, withRaw, (<|>))
 import Text.Pandoc.Readers.Sile.Types (ExpansionPoint (..), Macro (..),
                                         ArgSpec (..), Tok (..), TokType (..))
--- import Text.Pandoc.Readers.Sile.Parsing
+import Text.Pandoc.Readers.Sile.Parsing
 import Text.Pandoc.Shared
 import qualified Text.Pandoc.Translations as Translations
 import Text.Pandoc.Walk
@@ -139,14 +139,7 @@ rawSileBlock :: (PandocMonad m, HasReaderOptions s)
               => ParserT String s m String
 rawSileBlock = do
   lookAhead (try (char '\\' >> letter))
-  snd <$> (rawSileParser False macroDef blocks
-      <|> (rawSileParser True
-             (do choice (map controlSeq
-                   ["include", "input", "subfile", "usepackage"])
-                 skipMany opt
-                 braced
-                 return mempty) blocks)
-      <|> rawSileParser True
+  snd <$> (rawSileParser True
            (environment <|> blockCommand)
            (mconcat <$> (many (block <|> beginOrEndCommand))))
 
@@ -164,9 +157,9 @@ beginOrEndCommand = try $ do
      else return $ rawBlock "latex"
                     (T.unpack (txt <> untokenize rawargs))
 
-rawSileInline :: (PandocMonad m, HasMacros s, HasReaderOptions s)
+rawSileInline :: (PandocMonad m, HasReaderOptions s)
                => ParserT String s m String
-rawLaTeXInline = do
+rawSileInline = do
   lookAhead (try (char '\\' >> letter))
   snd <$> (  rawSileParser True
               (mempty <$ (controlSeq "input" >> skipMany opt >> braced))
@@ -245,8 +238,6 @@ quoted' f starter ender = do
      else lit startchs
 
 
-toksToString :: [Tok] -> String
-toksToString = T.unpack . untokenize
 
 -- citations
 
@@ -285,7 +276,7 @@ rawopt = try $ do
   return $ "[" <> inner <> "]"
 
 skipopts :: PandocMonad m => LP m ()
-skipopts = skipMany (overlaySpecification <|> void rawopt)
+skipopts = skipMany (void rawopt)
 
 overlayTok :: PandocMonad m => LP m Tok
 overlayTok =
@@ -449,33 +440,34 @@ authors = try $ do
   egroup
   addMeta "author" (map trimInlines auths)
 
-bracketedToks :: PandocMonad m => LP m [Tok]
-bracketedToks = do
-  symbol '['
-  mconcat <$> manyTill (braced <|> (:[]) <$> anyTok) (symbol ']')
-
 
 looseItem :: PandocMonad m => LP m Blocks
 looseItem = do
   skipopts
   return mempty
 
-section :: PandocMonad m => Bool -> Attr -> Int -> LP m Blocks
-section starred (ident, classes, kvs) lvl = do
+resetCaption :: PandocMonad m => LP m ()
+resetCaption = updateState $ \st -> st{ sCaption = (Nothing, Nothing) }
+
+section :: PandocMonad m => Attr -> Int -> LP m Blocks
+section (ident, classes, kvs) lvl = do
   skipopts
   contents <- grouped inline
   lab <- option ident $
           try (spaces >> controlSeq "label"
                >> spaces >> toksToString <$> braced)
-  let classes' = if starred then "unnumbered" : classes else classes
-  unless starred $ do
+  when (lvl == 0) $
+    updateState $ \st -> st{ sHasChapters = True }
+  unless ("unnumbered" `elem` classes) $ do
     hn <- sLastHeaderNum <$> getState
-    let num = incrementHeaderNum lvl hn
-    updateState $ \st -> st{ sLastHeaderNum = num }
-    updateState $ \st -> st{ sLabels = M.insert lab
-                            [Str (renderHeaderNum num)]
-                            (sLabels st) }
-  attr' <- registerHeader (lab, classes', kvs) contents
+    hasChapters <- sHasChapters <$> getState
+    let lvl' = lvl + if hasChapters then 1 else 0
+    let num = incrementDottedNum lvl' hn
+    updateState $ \st -> st{ sLastHeaderNum = num
+                           , sLabels = M.insert lab
+                              [Str (renderDottedNum num)]
+                              (sLabels st) }
+  attr' <- registerHeader (lab, classes, kvs) contents
   return $ headerWith attr' lvl contents
 
 blockCommand :: PandocMonad m => LP m Blocks
@@ -487,7 +479,9 @@ blockCommand = try $ do
   let names = ordNub [name', name]
   let rawDefiniteBlock = do
         guard $ isBlockCommand name
-        rawBlock "sile" <$> getRawCommand name (txt <> star)
+        rawcontents <- getRawCommand name (txt <> star)
+        (guardEnabled Ext_raw_sile >> return (rawBlock "sile" rawcontents))
+          <|> ignore rawcontents
   -- heuristic:  if it could be either block or inline, we
   -- treat it if block if we have a sequence of block
   -- commands followed by a newline.  But we stop if we
@@ -499,26 +493,44 @@ blockCommand = try $ do
         guard $ "start" `T.isPrefixOf` n
   let rawMaybeBlock = try $ do
         guard $ not $ isInlineCommand name
-        curr <- rawBlock "sile" <$> getRawCommand name (txt <> star)
+        rawcontents <- getRawCommand name (txt <> star)
+        curr <- (guardEnabled Ext_raw_sile >>
+                    return (rawBlock "sile" rawcontents))
+                   <|> ignore rawcontents
         rest <- many $ notFollowedBy startCommand *> blockCommand
         lookAhead $ blankline <|> startCommand
         return $ curr <> mconcat rest
   let raw = rawDefiniteBlock <|> rawMaybeBlock
   lookupListDefault raw names blockCommands
 
+closing :: PandocMonad m => LP m Blocks
+closing = do
+  contents <- tok
+  st <- getState
+  let extractInlines (MetaBlocks [Plain ys]) = ys
+      extractInlines (MetaBlocks [Para ys ]) = ys
+      extractInlines _                       = []
+  let sigs = case lookupMeta "author" (sMeta st) of
+                  Just (MetaList xs) ->
+                    para $ trimInlines $ fromList $
+                      intercalate [LineBreak] $ map extractInlines xs
+                  _ -> mempty
+  return $ para (trimInlines contents) <> sigs
+
 blockCommands :: PandocMonad m => M.Map Text (LP m Blocks)
-blockCommands = M.fromList $
-  [ ("par", mempty <$ skipopts)
-  , ("title", mempty <$ (skipopts *>
-                          (grouped inline >>= addMeta "title")
-                      <|> (grouped block >>= addMeta "title")))
-  , ("subtitle", mempty <$ (skipopts *> tok >>= addMeta "subtitle"))
-  , ("author", mempty <$ (skipopts *> authors))
-   , ("chapter", section False nullAttr 0)
-   , ("subsection", section False nullAttr 2)
-   , ("subsubsection", section False nullAttr 3)
-   , ("paragraph", section False nullAttr 4)
-   , ("subparagraph", section False nullAttr 5)
+blockCommands = M.fromList
+   [ ("par", mempty <$ skipopts)
+   , ("title", mempty <$ (skipopts *>
+                             (grouped inline >>= addMeta "title")
+                         <|> (grouped block >>= addMeta "title")))
+   , ("subtitle", mempty <$ (skipopts *> tok >>= addMeta "subtitle"))
+   , ("author", mempty <$ (skipopts *> authors))
+   , ("part", section nullAttr (-1))
+   , ("chapter", section nullAttr 0)
+   , ("section", section nullAttr 1)
+   , ("subsubsection", section nullAttr 3)
+   , ("paragraph", section nullAttr 4)
+   , ("subparagraph", section nullAttr 5)
    , ("hrule", pure horizontalRule)
    , ("rule", skipopts *> tok *> tok *> pure horizontalRule)
    , ("item", skipopts *> looseItem)
@@ -534,6 +546,7 @@ environments = M.fromList
    , ("listarea", bulletList <$> listenv "itemize" (many item))
    , ("obeylines", obeylines)
    ]
+
 environment :: PandocMonad m => LP m Blocks
 environment = try $ do
   controlSeq "begin"

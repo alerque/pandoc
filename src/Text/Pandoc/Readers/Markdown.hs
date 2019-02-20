@@ -1086,7 +1086,7 @@ rawTeXBlock = do
           <|> (B.rawBlock "tex" . trim . T.concat <$>
                 many1 ((++) <$> rawLaTeXBlock <*> spnl'))
           <|> (B.rawBlock "sile" . trim . T.concat <$>
-                many1 ((++) <$> rawSileEnvironment <*> spnl'))
+                many1 ((++) <$> rawSileBlock <*> spnl'))
   return $ case B.toList result of
                 [RawBlock _ cs]
                   | T.all (`elem` [' ','\t','\n']) cs -> return mempty
