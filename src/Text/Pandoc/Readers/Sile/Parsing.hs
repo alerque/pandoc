@@ -190,6 +190,10 @@ instance HasIncludeFiles SileState where
   addIncludeFile f s = s{ sContainers = f : sContainers s }
   dropLatestIncludeFile s = s { sContainers = drop 1 $ sContainers s }
 
+instance HasMacros SileState where
+  extractMacros  st  = sMacros st
+  updateMacros f st  = st{ sMacros = f (sMacros st) }
+
 instance HasReaderOptions SileState where
   extractReaderOptions = sOptions
 
@@ -244,7 +248,7 @@ rawSileParser retokenize parser valParser = do
 
 applyMacros :: (PandocMonad m, HasMacros s, HasReaderOptions s)
             => String -> ParserT String s m String
-applyMacros s = (guardDisabled Ext_latex_macros >> return s) <|>
+applyMacros s = (guardDisabled Ext_sile_macros >> return s) <|>
    do let retokenize = toksToString <$> many (satisfyTok (const True))
       pstate <- getState
       let lstate = def{ sOptions = extractReaderOptions pstate

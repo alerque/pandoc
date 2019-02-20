@@ -136,6 +136,7 @@ data Extension =
     | Ext_inline_code_attributes  -- ^ Allow attributes on inline code
     | Ext_inline_notes        -- ^ Pandoc-style inline notes
     | Ext_intraword_underscores  -- ^ Treat underscore inside word as literal
+    | Ext_sile_macros        -- ^ Parse Sile macro definitions (for math only)
     | Ext_latex_macros        -- ^ Parse LaTeX macro definitions (for math only)
     | Ext_line_blocks         -- ^ RST style line blocks
     | Ext_link_attributes         -- ^ link and image attributes
@@ -194,6 +195,7 @@ pandocExtensions = extensionsFromList
   , Ext_raw_tex
   , Ext_raw_html
   , Ext_tex_math_dollars
+  , Ext_sile_macros
   , Ext_latex_macros
   , Ext_fenced_code_blocks
   , Ext_fenced_code_attributes
@@ -236,6 +238,7 @@ plainExtensions = extensionsFromList
   , Ext_simple_tables
   , Ext_multiline_tables
   , Ext_grid_tables
+  , Ext_sile_macros
   , Ext_latex_macros
   , Ext_fancy_lists
   , Ext_startnum
@@ -360,6 +363,10 @@ getDefaultExtensions "epub"            = extensionsFromList
                                            Ext_epub_html_exts]
 getDefaultExtensions "epub2"           = getDefaultExtensions "epub"
 getDefaultExtensions "epub3"           = getDefaultExtensions "epub"
+getDefaultExtensions "sile"           = extensionsFromList
+                                          [Ext_smart,
+                                           Ext_sile_macros,
+                                           Ext_auto_identifiers]
 getDefaultExtensions "latex"           = extensionsFromList
                                           [Ext_smart,
                                            Ext_latex_macros,
