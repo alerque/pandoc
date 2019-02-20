@@ -35,6 +35,7 @@ Conversion of Sile to 'Pandoc' document.
 
 -}
 module Text.Pandoc.Readers.Sile (  readSile,
+                                   applyMacros,
                                    rawSileInline,
                                    rawSileBlock,
                                    inlineCommand,
