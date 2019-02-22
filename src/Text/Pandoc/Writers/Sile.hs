@@ -545,7 +545,7 @@ inlineToSile (Span (id',classes,kvs) ils) = do
              ["LR" | ("dir", "ltr") `elem` kvs]
   contents <- inlineListToSile ils
   return $ if null cmds
-              then braces contents
+              then "\\span" <> braces contents
               else foldr inCmd contents cmds
 inlineToSile (Emph lst) =
   inlineListToSile lst >>= return . inCmd "em"
