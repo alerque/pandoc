@@ -594,7 +594,7 @@ inlineToSile  il@(RawInline f str)
   | otherwise           = do
       report $ InlineNotRendered il
       return empty
-inlineToSile (LineBreak) = return $ "\\hfill\\break" <> cr
+inlineToSile LineBreak = return $ "\\break" <> cr
 inlineToSile SoftBreak = do
   wrapText <- gets (writerWrapText . stOptions)
   case wrapText of
