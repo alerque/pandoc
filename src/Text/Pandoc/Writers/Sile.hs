@@ -42,7 +42,7 @@ import Data.List (foldl', intercalate, intersperse, stripPrefix, )
 import Data.Maybe (catMaybes, fromMaybe, isJust)
 import Data.Text (Text)
 import Network.URI (unEscapeString)
-import Text.Pandoc.Class (PandocMonad, report)
+import Text.Pandoc.Class (PandocMonad, report, toLang)
 import Text.Pandoc.Definition
 import Text.Pandoc.ImageSize
 import Text.Pandoc.Logging
@@ -538,8 +538,9 @@ inlineToSile :: PandocMonad m
               -> LW m Doc
 inlineToSile (Span (id',classes,kvs) ils) = do
   ref <- toLabel id'
-  let cmds = ["textup" | "csl-no-emph" `elem` classes] ++
-             ["textnormal" | "csl-no-strong" `elem` classes ||
+  lang <- toLang $ lookup "lang" kvs
+  let cmds = ["font" | "csl-no-emph" `elem` classes] ++
+             ["font" | "csl-no-strong" `elem` classes ||
                              "csl-no-smallcaps" `elem` classes] ++
              ["RL" | ("dir", "rtl") `elem` kvs] ++
              ["LR" | ("dir", "ltr") `elem` kvs]
@@ -557,8 +558,10 @@ inlineToSile (Superscript lst) =
   inlineListToSile lst >>= return . inCmd "textsuperscript"
 inlineToSile (Subscript lst) = do
   inlineListToSile lst >>= return . inCmd "textsubscript"
-inlineToSile (SmallCaps lst) =
-  inlineListToSile lst >>= return . inCmd "textsc"
+inlineToSile (SmallCaps lst) = do
+  contents <- inlineListToSile lst
+  -- args [
+  return $ inCmd "fontSC" contents
 inlineToSile (Cite cits lst) = do
   st <- get
   let opts = stOptions st
