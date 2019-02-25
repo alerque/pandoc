@@ -233,22 +233,13 @@ inArgCmd cmd args contents = do
                  else brackets $ hcat (intersperse "," (map text args))
   char '\\' <> text cmd <> args' <> braces contents
 
--- -- toArgs :: String -> [String] -> String -> [String]
--- toArgs :: [String] -> [String]
--- toArgs id = do
---   ref <- toLabel id
---   return (if ref == ""
---             then []
---             else [ "id=" ++ ref ])
-
--- --   let classes' = [ val | (val) <- classes ]
--- --   let classes'' = intercalate "," classes'
--- --           (if null classes
--- --             then []
--- --             else [ "classes={" ++ classes'' ++ "}" ] ) ++
--- --           (if null kvs
--- --             then []
--- --             else [ key ++ "=" ++ attr | (key, attr) <- kvs ])
+inBlockCmd :: String -> [String] -> Doc -> Doc
+inBlockCmd cmd args contents = do
+  let args' = if null args
+                 then ""
+                 else brackets $ hcat (intersperse "," (map text args))
+      cmd' = braces (text cmd)
+  "\\begin" <> args' <> cmd' $$ contents $$ "\\end" <> cmd'
 
 isLineBreakOrSpace :: Inline -> Bool
 isLineBreakOrSpace LineBreak = True
@@ -261,13 +252,25 @@ blockToSile :: PandocMonad m
              => Block     -- ^ Block to convert
              -> LW m Doc
 blockToSile Null = return empty
-blockToSile (Div (identifier,classes,kvs) bs) = do
-  ref <- toLabel identifier
-  let linkAnchor = if null identifier
+blockToSile (Div (id,classes,kvs) bs) = do
+  ref <- toLabel id
+  lang <- toLang $ lookup "lang" kvs
+  let linkAnchor = if null id
                       then empty
                       else "\\pdf:link" <> braces (text ref)
+  let classes' = [ val | (val) <- classes ]
+  let classes'' = intercalate "," classes'
+  let params = (if id == ""
+                  then []
+                  else [ "id=" ++ ref ]) ++
+               (if null classes'
+                  then []
+                  else [ "classes={" ++ classes'' ++ "}" ] ) ++
+                (if null kvs
+                  then []
+                  else [ key ++ "=" ++ attr | (key, attr) <- kvs ])
   contents <- blockListToSile bs
-  return (linkAnchor $$ contents)
+  return $ inBlockCmd "div" params (linkAnchor $$ contents)
 blockToSile (Plain lst) =
   inlineListToSile $ dropWhile isLineBreakOrSpace lst
 -- title beginning with fig: indicates that the image is a figure
