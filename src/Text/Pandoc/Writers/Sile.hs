@@ -549,20 +549,23 @@ inlineToSile (Span (id,classes,kvs) ils) = do
              ["textnostrong" | "csl-no-strong" `elem` classes ] ++
              ["textnosc" | "csl-no-smallcaps" `elem` classes ]
   contents <- inlineListToSile ils
-  let classes' = [ val | (val) <- classes ]
-  let classes'' = intercalate "," classes'
+  let classes' = filter (`notElem` [ "csl-no-emph", "csl-no-strong", "csl-no-smallcaps"]) classes
+  let classes'' = [ val | (val) <- classes' ]
+  let classes''' = intercalate "," classes''
   let params = (if id == ""
                   then []
                   else [ "id=" ++ ref ]) ++
-               (if null classes
+               (if null classes'
                   then []
-                  else [ "classes={" ++ classes'' ++ "}" ] ) ++
+                  else [ "classes={" ++ classes''' ++ "}" ] ) ++
                 (if null kvs
                   then []
                   else [ key ++ "=" ++ attr | (key, attr) <- kvs ])
   return $ if null cmds
               then inArgCmd "span" params contents
-              else foldr inCmd contents cmds
+              else if null params
+                then foldr inCmd contents cmds
+                else inArgCmd "span" params $ foldr inCmd contents cmds
 inlineToSile (Emph lst) =
   inlineListToSile lst >>= return . inCmd "textem"
 inlineToSile (Strong lst) =
