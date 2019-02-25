@@ -1314,7 +1314,7 @@ inlineToLaTeX il@(RawInline f str) = do
 inlineToLaTeX LineBreak = do
   emptyLine <- gets stEmptyLine
   setEmptyLine True
-  return $ (if emptyLine then "~" else "") <> "\\\\" <> cr
+  return $ (if emptyLine then "~" else "!") <> "\\\\" <> cr
 inlineToLaTeX SoftBreak = do
   wrapText <- gets (writerWrapText . stOptions)
   case wrapText of
