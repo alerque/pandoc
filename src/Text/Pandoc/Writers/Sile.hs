@@ -265,15 +265,14 @@ blockToSile (Div (id,classes,kvs) bs) = do
                   else [ "id=" ++ ref ]) ++
                (if null classes'
                   then []
-                  else [ "classes={" ++ classes'' ++ "}" ] ) ++
+                  else [ "classes=\"" ++ classes'' ++ "\"" ] ) ++
                 (if null kvs
                   then []
                   else [ key ++ "=" ++ attr | (key, attr) <- kvs ])
   contents <- blockListToSile bs
-  return $ inBlockCmd "div" params (linkAnchor $$ contents)
+  return $ inBlockCmd "Div" params (linkAnchor $$ contents)
 blockToSile (Plain lst) =
   inlineListToSile $ dropWhile isLineBreakOrSpace lst
--- title beginning with fig: indicates that the image is a figure
 blockToSile (Para [Str ".",Space,Str ".",Space,Str "."]) = do
   inlineListToSile [Str ".",Space,Str ".",Space,Str "."]
 blockToSile (Para lst) =
@@ -299,7 +298,7 @@ blockToSile (CodeBlock (identifier,classes,kvs) str) = do
                   else [ "id=" ++ ref ]) ++
                (if null classes
                   then []
-                  else [ "classes={" ++ classes'' ++ "}" ] ) ++
+                  else [ "classes=\"" ++ classes'' ++ "\"" ] ) ++
                 (if null kvs
                   then []
                   else [ key ++ "=" ++ attr | (key, attr) <- kvs ])
@@ -577,29 +576,29 @@ inlineToSile (Span (id,classes,kvs) ils) = do
                   else [ "id=" ++ ref ]) ++
                (if null classes'
                   then []
-                  else [ "classes={" ++ classes''' ++ "}" ] ) ++
+                  else [ "classes=\"" ++ classes''' ++ "\"" ] ) ++
                 (if null kvs
                   then []
                   else [ key ++ "=" ++ attr | (key, attr) <- kvs ])
   return $ if null commands
               then if null params
                       then braces contents
-                      else inArgCmd "span" params contents
+                      else inArgCmd "Span" params contents
               else if null params
                       then foldr inCmd contents commands
-                      else inArgCmd "span" params $ foldr inCmd contents commands
+                      else inArgCmd "Span" params $ foldr inCmd contents commands
 inlineToSile (Emph lst) =
-  inlineListToSile lst >>= return . inCmd "emph"
+  inlineListToSile lst >>= return . inCmd "Emph"
 inlineToSile (Strong lst) =
-  inlineListToSile lst >>= return . inCmd "strong"
+  inlineListToSile lst >>= return . inCmd "Strong"
 inlineToSile (Strikeout lst) =
-  inlineListToSile lst >>= return . inCmd "strikeout"
+  inlineListToSile lst >>= return . inCmd "Strikeout"
 inlineToSile (Superscript lst) =
-  inlineListToSile lst >>= return . inCmd "superscript"
+  inlineListToSile lst >>= return . inCmd "Superscript"
 inlineToSile (Subscript lst) =
-  inlineListToSile lst >>= return . inCmd "subscript"
+  inlineListToSile lst >>= return . inCmd "Subscript"
 inlineToSile (SmallCaps lst) =
-  inlineListToSile lst >>= return . inCmd "smallcaps"
+  inlineListToSile lst >>= return . inCmd "SmallCaps"
 inlineToSile (Cite cits lst) = do
   st <- get
   let opts = stOptions st
