@@ -539,11 +539,9 @@ inlineToSile :: PandocMonad m
 inlineToSile (Span (id',classes,kvs) ils) = do
   ref <- toLabel id'
   lang <- toLang $ lookup "lang" kvs
-  let cmds = ["font" | "csl-no-emph" `elem` classes] ++
-             ["font" | "csl-no-strong" `elem` classes ||
-                             "csl-no-smallcaps" `elem` classes] ++
-             ["RL" | ("dir", "rtl") `elem` kvs] ++
-             ["LR" | ("dir", "ltr") `elem` kvs]
+  let cmds = ["textnoem" | "csl-no-emph" `elem` classes] ++
+             ["textnostrong" | "csl-no-strong" `elem` classes ] ++
+             ["textnosc" | "csl-no-smallcaps" `elem` classes ]
   contents <- inlineListToSile ils
   return $ if null cmds
               then "\\span" <> braces contents
@@ -561,7 +559,7 @@ inlineToSile (Subscript lst) = do
 inlineToSile (SmallCaps lst) = do
   contents <- inlineListToSile lst
   -- args [
-  return $ inCmd "fontSC" contents
+  return $ inCmd "textsc" contents
 inlineToSile (Cite cits lst) = do
   st <- get
   let opts = stOptions st

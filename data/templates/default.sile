@@ -17,6 +17,7 @@ $endif$
 \script[src=packages/image]
 \script[src=packages/footnotes]
 \script[src=packages/rules]
+\script[src=packages/pandoc]
 \define[command=listarea]{\set[parameter=document.rskip,value=10pt]\set[parameter=document.lskip,value=20pt]\process\set[parameter=document.lskip]\set[parameter=document.rskip]\noindent}%
 \define[command=listitem]{\smallskip{}\glue[width=-1em]• \glue[width=0.3em]\process\smallskip}%
 \begin{script}
