@@ -226,6 +226,12 @@ toLabel z = go `fmap` stringToSile URLString z
 inCmd :: String -> Doc -> Doc
 inCmd cmd contents = char '\\' <> text cmd <> braces contents
 
+inArgCmd :: String -> [String] -> Doc -> Doc
+inArgCmd cmd args contents = do
+  let args' = if null args
+                 then ""
+                 else hcat (intersperse "," (map text args))
+  char '\\' <> text cmd <> brackets args' <> braces contents
 
 isLineBreakOrSpace :: Inline -> Bool
 isLineBreakOrSpace LineBreak = True
@@ -262,24 +268,24 @@ blockToSile (BlockQuote lst) = do
          contents <- blockListToSile lst
          modify (\s -> s{stInQuote = oldInQuote})
          return $ "\\begin{quote}" $$ contents $$ "\\end{quote}"
-blockToSile (CodeBlock (identifier,classes,keyvalAttr) str) = do
+blockToSile (CodeBlock (identifier,classes,kvs) str) = do
   opts <- gets stOptions
   ref <- toLabel identifier
   str' <- stringToSile CodeString str
   let classes' = [ val | (val) <- classes ]
-  let classes'' = intercalate ", " classes'
+  let classes'' = intercalate "," classes'
   let params = (if identifier == ""
                   then []
                   else [ "id=" ++ ref ]) ++
                (if null classes
                   then []
                   else [ "classes={" ++ classes'' ++ "}" ] ) ++
-                (if null keyvalAttr
+                (if null kvs
                   then []
-                  else [ key ++ "=" ++ attr | (key, attr) <- keyvalAttr ])
+                  else [ key ++ "=" ++ attr | (key, attr) <- kvs ])
       sileParams
           | null params = empty
-          | otherwise = brackets $ hcat (intersperse ", " (map text params))
+          | otherwise = brackets $ hcat (intersperse "," (map text params))
   let linkAnchor = if null identifier
                       then empty
                       else "\\pdf:link" <> brackets (text ref) <> braces (text ref)
@@ -536,30 +542,39 @@ inlineListToSile lst =
 inlineToSile :: PandocMonad m
               => Inline    -- ^ Inline to convert
               -> LW m Doc
-inlineToSile (Span (id',classes,kvs) ils) = do
-  ref <- toLabel id'
+inlineToSile (Span (id,classes,kvs) ils) = do
+  ref <- toLabel id
   lang <- toLang $ lookup "lang" kvs
   let cmds = ["textnoem" | "csl-no-emph" `elem` classes] ++
              ["textnostrong" | "csl-no-strong" `elem` classes ] ++
              ["textnosc" | "csl-no-smallcaps" `elem` classes ]
   contents <- inlineListToSile ils
+  let classes' = [ val | (val) <- classes ]
+  let classes'' = intercalate "," classes'
+  let params = (if id == ""
+                  then []
+                  else [ "id=" ++ ref ]) ++
+               (if null classes
+                  then []
+                  else [ "classes={" ++ classes'' ++ "}" ] ) ++
+                (if null kvs
+                  then []
+                  else [ key ++ "=" ++ attr | (key, attr) <- kvs ])
   return $ if null cmds
-              then "\\span" <> braces contents
+              then inArgCmd "span" params contents
               else foldr inCmd contents cmds
 inlineToSile (Emph lst) =
-  inlineListToSile lst >>= return . inCmd "em"
+  inlineListToSile lst >>= return . inCmd "textem"
 inlineToSile (Strong lst) =
-  inlineListToSile lst >>= return . inCmd "strong"
-inlineToSile (Strikeout lst) = do
-  inlineListToSile lst >>= return . inCmd "strike"
+  inlineListToSile lst >>= return . inCmd "textstrong"
+inlineToSile (Strikeout lst) =
+  inlineListToSile lst >>= return . inCmd "textstrike"
 inlineToSile (Superscript lst) =
   inlineListToSile lst >>= return . inCmd "textsuperscript"
-inlineToSile (Subscript lst) = do
+inlineToSile (Subscript lst) =
   inlineListToSile lst >>= return . inCmd "textsubscript"
-inlineToSile (SmallCaps lst) = do
-  contents <- inlineListToSile lst
-  -- args [
-  return $ inCmd "textsc" contents
+inlineToSile (SmallCaps lst) =
+  inlineListToSile lst >>= return . inCmd "textsc"
 inlineToSile (Cite cits lst) = do
   st <- get
   let opts = stOptions st
@@ -607,7 +622,7 @@ inlineToSile (Link _ txt ('#':ident, _)) = do
   contents <- inlineListToSile txt
   lab <- toLabel ident
   return $ text "\\pdf:link" <> brackets ("dest=" <> text lab) <> braces contents
-inlineToSile (Link (_,_,keyvalAttr) txt (src, tit)) =
+inlineToSile (Link (_,_,kvs) txt (src, tit)) =
   case txt of
         [Str x] | escapeURI x == src ->  -- autolink
              do modify $ \s -> s{ stUrl = True }
@@ -626,9 +641,9 @@ inlineToSile (Link (_,_,keyvalAttr) txt (src, tit)) =
                               (if null tit
                                 then []
                                 else [ "title=\"" ++ tit ++ "\"" ]) ++
-                              (if null keyvalAttr
+                              (if null kvs
                                   then []
-                                  else [ key ++ "=\"" ++ val ++ "\"" | (key, val) <- keyvalAttr ])
+                                  else [ key ++ "=\"" ++ val ++ "\"" | (key, val) <- kvs ])
                     linkattrs
                       | null params = empty
                       | otherwise = brackets $ hcat (intersperse "," (map text params))
