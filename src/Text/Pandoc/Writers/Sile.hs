@@ -230,8 +230,25 @@ inArgCmd :: String -> [String] -> Doc -> Doc
 inArgCmd cmd args contents = do
   let args' = if null args
                  then ""
-                 else hcat (intersperse "," (map text args))
-  char '\\' <> text cmd <> brackets args' <> braces contents
+                 else brackets $ hcat (intersperse "," (map text args))
+  char '\\' <> text cmd <> args' <> braces contents
+
+-- -- toArgs :: String -> [String] -> String -> [String]
+-- toArgs :: [String] -> [String]
+-- toArgs id = do
+--   ref <- toLabel id
+--   return (if ref == ""
+--             then []
+--             else [ "id=" ++ ref ])
+
+-- --   let classes' = [ val | (val) <- classes ]
+-- --   let classes'' = intercalate "," classes'
+-- --           (if null classes
+-- --             then []
+-- --             else [ "classes={" ++ classes'' ++ "}" ] ) ++
+-- --           (if null kvs
+-- --             then []
+-- --             else [ key ++ "=" ++ attr | (key, attr) <- kvs ])
 
 isLineBreakOrSpace :: Inline -> Bool
 isLineBreakOrSpace LineBreak = True
@@ -545,9 +562,9 @@ inlineToSile :: PandocMonad m
 inlineToSile (Span (id,classes,kvs) ils) = do
   ref <- toLabel id
   lang <- toLang $ lookup "lang" kvs
-  let cmds = ["textnoem" | "csl-no-emph" `elem` classes] ++
-             ["textnostrong" | "csl-no-strong" `elem` classes ] ++
-             ["textnosc" | "csl-no-smallcaps" `elem` classes ]
+  let classToCommand = [ "csl-no-emph", "csl-no-strong", "csl-no-smallcaps" ]
+  let commands = filter (`elem` classToCommand) classes
+  let classes' = filter (`notElem` classToCommand) classes
   contents <- inlineListToSile ils
   let classes' = filter (`notElem` [ "csl-no-emph", "csl-no-strong", "csl-no-smallcaps"]) classes
   let classes'' = [ val | (val) <- classes' ]
@@ -561,23 +578,25 @@ inlineToSile (Span (id,classes,kvs) ils) = do
                 (if null kvs
                   then []
                   else [ key ++ "=" ++ attr | (key, attr) <- kvs ])
-  return $ if null cmds
-              then inArgCmd "span" params contents
+  return $ if null commands
+              then if null params
+                      then braces contents
+                      else inArgCmd "span" params contents
               else if null params
-                then foldr inCmd contents cmds
-                else inArgCmd "span" params $ foldr inCmd contents cmds
+                      then foldr inCmd contents commands
+                      else inArgCmd "span" params $ foldr inCmd contents commands
 inlineToSile (Emph lst) =
-  inlineListToSile lst >>= return . inCmd "textem"
+  inlineListToSile lst >>= return . inCmd "emph"
 inlineToSile (Strong lst) =
-  inlineListToSile lst >>= return . inCmd "textstrong"
+  inlineListToSile lst >>= return . inCmd "strong"
 inlineToSile (Strikeout lst) =
-  inlineListToSile lst >>= return . inCmd "textstrike"
+  inlineListToSile lst >>= return . inCmd "strikeout"
 inlineToSile (Superscript lst) =
-  inlineListToSile lst >>= return . inCmd "textsuperscript"
+  inlineListToSile lst >>= return . inCmd "superscript"
 inlineToSile (Subscript lst) =
-  inlineListToSile lst >>= return . inCmd "textsubscript"
+  inlineListToSile lst >>= return . inCmd "subscript"
 inlineToSile (SmallCaps lst) =
-  inlineListToSile lst >>= return . inCmd "textsc"
+  inlineListToSile lst >>= return . inCmd "smallcaps"
 inlineToSile (Cite cits lst) = do
   st <- get
   let opts = stOptions st
