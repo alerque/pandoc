@@ -504,9 +504,8 @@ sectionHeader unnumbered ident level lst = do
                    return $ brackets txtNoNotes
   let contents = if render Nothing txt == plain
                     then braces txt
-                    else braces (text "\\texorpdfstring"
-                         <> braces txt
-                         <> braces (text plain))
+                    else braces txt
+                         <> braces (text plain)
   book <- gets stBook
   opts <- gets stOptions
   let topLevelDivision = if writerTopLevelDivision opts == TopLevelDefault
