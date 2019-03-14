@@ -360,7 +360,7 @@ blockToSile (DefinitionList lst) = do
          $$ vcat items
          $$ "\\end" <> braces "listarea"
 blockToSile HorizontalRule = return $
-  "\\begin{center}\\rule{0.5\\linewidth}{\\linethickness}\\end{center}"
+  "\\HorizontalRule"
 blockToSile (Header level (id',classes,_) lst) = do
   modify $ \s -> s{stInHeading = True}
   hdr <- sectionHeader ("unnumbered" `elem` classes) id' level lst
