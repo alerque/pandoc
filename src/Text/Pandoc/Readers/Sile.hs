@@ -120,7 +120,7 @@ resolveRefs _ x = x
 -- testParser p t = do
 --   res <- runIOorExplode (runParserT p defaultSileState{
 --             sOptions = def{ readerExtensions =
---               enableExtension Ext_raw_tex $
+--               enableExtension Ext_raw_sile $
 --                 getDefaultExtensions "sile" }} "source" (tokenize "source" t))
 --   case res of
 --        Left e  -> error (show e)
@@ -245,7 +245,7 @@ inlineCommand' = try $ do
   let raw = do
        guard $ isInlineCommand name || not (isBlockCommand name)
        rawcommand <- getRawCommand name (cmd <> star)
-       (guardEnabled Ext_raw_tex >> return (rawInline "sile" rawcommand))
+       (guardEnabled Ext_raw_sile >> return (rawInline "sile" rawcommand))
          <|> ignore rawcommand
   lookupListDefault raw names inlineCommands
 
@@ -542,7 +542,7 @@ env name p = p <* end_ name
 rawEnv :: PandocMonad m => Text -> LP m Blocks
 rawEnv name = do
   exts <- getOption readerExtensions
-  let parseRaw = extensionEnabled Ext_raw_tex exts
+  let parseRaw = extensionEnabled Ext_raw_sile exts
   rawOptions <- mconcat <$> many rawopt
   let beginCommand = "\\begin{" <> name <> "}" <> rawOptions
   pos1 <- getPosition
