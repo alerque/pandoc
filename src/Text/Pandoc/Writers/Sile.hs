@@ -625,14 +625,9 @@ inlineToSile (Math InlineMath str) =
 inlineToSile (Math DisplayMath str) = do
   setEmptyLine False
   return $ "\\[" <> text str <> "\\]"
-inlineToSile  il@(RawInline f str)
-  | f == Format "sile" || f == Format "sil"
-                        = do
-      setEmptyLine False
-      return $ text str
-  | otherwise           = do
-      report $ InlineNotRendered il
-      return empty
+inlineToSile  il@(RawInline f str) = do
+  setEmptyLine False
+  return $ text str
 inlineToSile LineBreak = return $ "\\hfill\\break" <> cr
 inlineToSile SoftBreak = do
   wrapText <- gets (writerWrapText . stOptions)
