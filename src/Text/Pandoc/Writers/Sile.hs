@@ -488,24 +488,11 @@ sectionHeader :: PandocMonad m
               -> LW m Doc
 sectionHeader unnumbered ident level lst = do
   txt <- inlineListToSile lst
-  plain <- stringToSile TextString $ concatMap stringify lst
   let removeInvalidInline (Note _)             = []
       removeInvalidInline (Span (id', _, _) _) | not (null id') = []
       removeInvalidInline Image{}            = []
       removeInvalidInline x                    = [x]
   let lstNoNotes = foldr (mappend . (\x -> walkM removeInvalidInline x)) mempty lst
-  txtNoNotes <- inlineListToSile lstNoNotes
-  -- footnotes in sections don't work (except for starred variants)
-  -- unless you specify an optional argument:
-  -- \section[mysec]{mysec\footnote{blah}}
-  optional <- if unnumbered || lstNoNotes == lst || null lstNoNotes
-                 then return empty
-                 else
-                   return $ brackets txtNoNotes
-  let contents = if render Nothing txt == plain
-                    then braces txt
-                    else braces txt
-                         <> braces (text plain)
   book <- gets stBook
   opts <- gets stOptions
   let topLevelDivision = if writerTopLevelDivision opts == TopLevelDefault
@@ -526,10 +513,9 @@ sectionHeader unnumbered ident level lst = do
                           5  -> "subparagraph"
                           _  -> ""
   lab <- labelFor ident
-  let stuffing = optional <> contents
   return $ if level' > 5
               then txt
-              else text ('\\':sectionType) <> stuffing
+              else text ('\\':sectionType) <> braces txt
 
 
 labelFor :: PandocMonad m => String -> LW m Doc
