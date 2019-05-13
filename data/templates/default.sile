@@ -1,7 +1,8 @@
-\begin[$if(papersize)$papersize=$papersize$,$endif$class=$documentclass$]{document}
+\begin[$if(papersize)$papersize=$papersize$,$endif$class=$documentclass$$if(classoptions)$,$classoptions$$endif$]{document}
 $if(lang)$
-\language[main=$language$]
-\font[language=$language$]
+\script[src=packages/pandoc]
+\language[main=$lang$]
+\font[language=$lang$]
 $endif$
 $if(langscript)$
 \font[script=$langscript$]
@@ -12,7 +13,6 @@ $endif$
 $if(fontsize)$
 \font[size=$fontsize$]
 $endif$
-\script[src=packages/pandoc]
 \define[command=listarea]{\set[parameter=document.rskip,value=10pt]\set[parameter=document.lskip,value=20pt]\process\set[parameter=document.lskip]\set[parameter=document.rskip]\noindent}%
 \define[command=listitem]{\smallskip{}\glue[width=-1em]• \glue[width=0.3em]\process\smallskip}%
 \begin{script}
@@ -29,11 +29,9 @@ $endif$
 \end{script}
 $for(include)$
 \include[src=$include$]
-
 $endfor$
 $for(script)$
 \script[src=$script$]
-
 $endfor$
 \set[parameter=linebreak.emergencyStretch,value=1em]
 $if(sansfont)$
