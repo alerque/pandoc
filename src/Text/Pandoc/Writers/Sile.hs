@@ -39,17 +39,19 @@ import Control.Applicative ((<|>))
 import Control.Monad.State.Strict
 import Data.Char (isAscii, isDigit, isLetter, isPunctuation, ord)
 import Data.List (foldl', intercalate, intersperse, stripPrefix, )
-import Data.Maybe (catMaybes, fromMaybe, isJust)
+import Data.Maybe (catMaybes, fromMaybe, isJust, mapMaybe)
 import Data.Text (Text)
+import qualified Data.Text as T
 import Network.URI (unEscapeString)
 import Text.Pandoc.Class (PandocMonad, report, toLang)
 import Text.Pandoc.Definition
 import Text.Pandoc.ImageSize
 import Text.Pandoc.Logging
 import Text.Pandoc.Options
-import Text.Pandoc.Pretty
+import Text.DocLayout
 import Text.Pandoc.Shared
-import Text.Pandoc.Templates
+import Text.Pandoc.Templates (renderTemplate)
+import Text.DocTemplates (Val(..), Context(..))
 import Text.Pandoc.Walk
 import Text.Pandoc.Writers.Shared
 import qualified Text.Parsec as P
@@ -108,43 +110,33 @@ pandocToSile options (Pandoc meta blocks) = do
   let isInternalLink (Link _ _ ('#':xs,_)) = [xs]
       isInternalLink _                     = []
   modify $ \s -> s{ stInternalLinks = query isInternalLink blocks' }
-  let template = fromMaybe "" $ writerTemplate options
   -- set stBook depending on documentclass
   let colwidth = if writerWrapText options == WrapAuto
                     then Just $ writerColumns options
                     else Nothing
-  let render' :: Doc -> Text
-      render' = render colwidth
-  metadata <- metaToJSON options
-              (fmap render' . blockListToSile)
-              (fmap render' . inlineListToSile)
+  metadata <- metaToContext options
+              blockListToSile
+              (fmap chomp . inlineListToSile)
               meta
   let bookClasses = ["book", "bible"]
-  let documentClass = case P.parse pDocumentClass "template" template of
-                              Right r -> r
-                              Left _  -> ""
-  case lookup "documentclass" (writerVariables options) `mplus`
-        fmap stringify (lookupMeta "documentclass" meta) of
-         Just x  | x `elem` bookClasses -> modify $ \s -> s{stBook = True}
-                 | otherwise            -> return ()
-         Nothing | documentClass `elem` bookClasses
-                                        -> modify $ \s -> s{stBook = True}
-                 | otherwise               -> return ()
-  let (blocks'', _) = if writerCiteMethod options == Citeproc then
+  let documentClass =
+        case lookup "documentclass" (writerVariables options) `mplus`
+              fmap stringify (lookupMeta "documentclass" meta) of
+                 Just x -> x
+  let (blocks'', lastHeader) = if writerCiteMethod options == Citeproc then
                                  (blocks', [])
                                else case last blocks' of
                                  Header 1 _ il -> (init blocks', il)
                                  _             -> (blocks', [])
   blocks''' <- return blocks''
-  body <- mapM (elementToSile options) $ hierarchicalize blocks'''
-  let main = render' $ vsep body
+  main <- blockListToSile $ makeSections False Nothing blocks'''
   st <- get
   titleMeta <- stringToSile TextString $ stringify $ docTitle meta
   authorsMeta <- mapM (stringToSile TextString . stringify) $ docAuthors meta
-  let hasStringValue x = isJust (getField x metadata :: Maybe String)
-  let geometryFromMargins = intercalate [','] $ catMaybes $
-                              map (\(x,y) ->
-                                ((x ++ "=") ++) <$> getField y metadata)
+  let hasStringValue x = isJust (getField x metadata :: Maybe (Doc Text))
+  let geometryFromMargins = mconcat $ intersperse ("," :: Doc Text) $
+                            mapMaybe (\(x,y) ->
+                                ((x <> "=") <>) <$> getField y metadata)
                               [("lmargin","margin-left")
                               ,("rmargin","margin-right")
                               ,("tmargin","margin-top")
@@ -152,16 +144,16 @@ pandocToSile options (Pandoc meta blocks) = do
                               ]
 
   let context  =  defField "toc" (writerTableOfContents options) $
-                  defField "toc-depth" (show (writerTOCDepth options -
+                  defField "toc-depth" (T.pack .  show $
+                                        (writerTOCDepth options -
                                               if stBook st
                                                  then 1
                                                  else 0)) $
                   defField "body" main $
-                  defField "title-meta" titleMeta $
-                  defField "author-meta" (intercalate "; " authorsMeta) $
-                  defField "documentclass" (if stBook st
-                                               then ("book" :: String)
-                                               else ("plain" :: String)) $
+                  defField "title-meta" (T.pack titleMeta) $
+                  defField "author-meta"
+                        (T.pack $ intercalate "; " authorsMeta) $
+                  defField "documentclass" (T.pack documentClass) $
                   defField "tables" (stTable st) $
                   defField "strikeout" (stStrikeout st) $
                   defField "url" (stUrl st) $
@@ -172,27 +164,22 @@ pandocToSile options (Pandoc meta blocks) = do
                   (case writerCiteMethod options of
                          _        -> id) $
                   defField "colorlinks" (any hasStringValue
-                           ["citecolor", "urlcolor", "linkcolor", "toccolor"]) $
+                           ["citecolor", "urlcolor", "linkcolor", "toccolor",
+                            "filecolor"]) $
                   defField "section-titles" True $
                   defField "geometry" geometryFromMargins $
-                  (case getField "papersize" metadata of
-                        Just ("A4" :: String) -> resetField "papersize"
-                                                    ("a4" :: String)
-                        _                     -> id) $
+                  (case T.unpack . render Nothing <$>
+                        getField "papersize" metadata of
+                        -- uppercase a4, a5, etc.
+                        Just (('A':d:ds) :: String)
+                          | all isDigit (d:ds) -> resetField "papersize"
+                                                    (T.pack ('a':d:ds))
+                        _                     -> id)
                   metadata
-  case writerTemplate options of
-       Nothing  -> return main
-       Just tpl -> renderTemplate' tpl context
-
--- | Convert Elements to Sile
-elementToSile :: PandocMonad m => WriterOptions -> Element -> LW m Doc
-elementToSile _ (Blk block) = blockToSile block
-elementToSile opts (Sec level _ (id',classes,_) title' elements) = do
-  modify $ \s -> s{stInHeading = True}
-  header' <- sectionHeader ("unnumbered" `elem` classes) id' level title'
-  modify $ \s -> s{stInHeading = False}
-  innerContents <- mapM (elementToSile opts) elements
-  return $ vsep (header' : innerContents)
+  return $ render colwidth $
+    case writerTemplate options of
+        Nothing  -> main
+        Just tpl -> renderTemplate tpl context
 
 data StringContext = TextString
                    | URLString
@@ -223,17 +210,17 @@ toLabel z = go `fmap` stringToSile URLString z
          | otherwise = "ux" ++ printf "%x" (ord x) ++ go xs
 
 -- | Puts contents into Sile command.
-inCmd :: String -> Doc -> Doc
+inCmd :: String -> Doc Text -> Doc Text
 inCmd cmd contents = char '\\' <> text cmd <> braces contents
 
-inArgCmd :: String -> [String] -> Doc -> Doc
+inArgCmd :: String -> [String] -> Doc Text -> Doc Text
 inArgCmd cmd args contents = do
   let args' = if null args
                  then ""
                  else brackets $ hcat (intersperse "," (map text args))
   char '\\' <> text cmd <> args' <> braces contents
 
-inBlockCmd :: String -> [String] -> Doc -> Doc
+inBlockCmd :: String -> [String] -> Doc Text -> Doc Text
 inBlockCmd cmd args contents = do
   let args' = if null args
                  then ""
@@ -250,7 +237,7 @@ isLineBreakOrSpace _         = False
 -- | Convert Pandoc block element to Sile.
 blockToSile :: PandocMonad m
              => Block     -- ^ Block to convert
-             -> LW m Doc
+             -> LW m (Doc Text)
 blockToSile Null = return empty
 blockToSile (Div (id,classes,kvs) bs) = do
   ref <- toLabel id
@@ -406,7 +393,7 @@ toColDescriptor align =
          AlignCenter  -> "c"
          AlignDefault -> "l"
 
-blockListToSile :: PandocMonad m => [Block] -> LW m Doc
+blockListToSile :: PandocMonad m => [Block] -> LW m (Doc Text)
 blockListToSile lst =
   vsep `fmap` mapM (\b -> setEmptyLine True >> blockToSile b) lst
 
@@ -415,7 +402,7 @@ tableRowToSile :: PandocMonad m
                 -> [Alignment]
                 -> [Double]
                 -> [[Block]]
-                -> LW m Doc
+                -> LW m (Doc Text)
 tableRowToSile header aligns widths cols = do
   -- scale factor compensates for extra space between columns
   -- so the whole table isn't larger than columnwidth
@@ -448,7 +435,7 @@ displayMathToInline (Math DisplayMath x) = Math InlineMath x
 displayMathToInline x                    = x
 
 tableCellToSile :: PandocMonad m => Bool -> (Double, Alignment, [Block])
-                 -> LW m Doc
+                 -> LW m (Doc Text)
 tableCellToSile _      (0,     _,     blocks) =
   blockListToSile $ walk fixLineBreaks $ walk displayMathToInline blocks
 tableCellToSile header (width, align, blocks) = do
@@ -465,11 +452,11 @@ tableCellToSile header (width, align, blocks) = do
             "\\strut\\end{minipage}")
 
 
-listItemToSile :: PandocMonad m => [Block] -> LW m Doc
+listItemToSile :: PandocMonad m => [Block] -> LW m (Doc Text)
 listItemToSile lst = do
   blockListToSile lst >>= return . (inCmd "listitem")
 
-defListItemToSile :: PandocMonad m => ([Inline], [[Block]]) -> LW m Doc
+defListItemToSile :: PandocMonad m => ([Inline], [[Block]]) -> LW m (Doc Text)
 defListItemToSile (term, defs) = do
     term' <- inlineListToSile term
     def'  <- liftM vsep $ mapM blockListToSile defs
@@ -485,7 +472,7 @@ sectionHeader :: PandocMonad m
               -> [Char]
               -> Int
               -> [Inline]
-              -> LW m Doc
+              -> LW m (Doc Text)
 sectionHeader unnumbered ident level lst = do
   txt <- inlineListToSile lst
   let removeInvalidInline (Note _)             = []
@@ -518,7 +505,7 @@ sectionHeader unnumbered ident level lst = do
               else text ('\\':sectionType) <> braces txt
 
 
-labelFor :: PandocMonad m => String -> LW m Doc
+labelFor :: PandocMonad m => String -> LW m (Doc Text)
 labelFor ""    = return empty
 labelFor ident = do
   ref <- text `fmap` toLabel ident
@@ -527,7 +514,7 @@ labelFor ident = do
 -- | Convert list of inline elements to Sile.
 inlineListToSile :: PandocMonad m
                   => [Inline]  -- ^ Inlines to convert
-                  -> LW m Doc
+                  -> LW m (Doc Text)
 inlineListToSile lst =
   mapM inlineToSile (fixLineInitialSpaces lst)
     >>= return . hcat
@@ -545,7 +532,7 @@ inlineListToSile lst =
 -- | Convert inline element to Sile
 inlineToSile :: PandocMonad m
               => Inline    -- ^ Inline to convert
-              -> LW m Doc
+              -> LW m (Doc Text)
 inlineToSile (Span (id,classes,kvs) ils) = do
   ref <- toLabel id
   lang <- toLang $ lookup "lang" kvs
@@ -675,7 +662,7 @@ inlineToSile (Note contents) = do
 setEmptyLine :: PandocMonad m => Bool -> LW m ()
 setEmptyLine b = modify $ \st -> st{ stEmptyLine = b }
 
-citationsToNatbib :: PandocMonad m => [Citation] -> LW m Doc
+citationsToNatbib :: PandocMonad m => [Citation] -> LW m (Doc Text)
 citationsToNatbib (one:[])
   = citeCommand c p s k
   where
@@ -723,13 +710,13 @@ citationsToNatbib cits = do
                NormalCitation -> citeCommand "citealp"  p s k
 
 citeCommand :: PandocMonad m
-            => String -> [Inline] -> [Inline] -> String -> LW m Doc
+            => String -> [Inline] -> [Inline] -> String -> LW m (Doc Text)
 citeCommand c p s k = do
   args <- citeArguments p s k
   return $ text ("\\" ++ c) <> args
 
 citeArguments :: PandocMonad m
-              => [Inline] -> [Inline] -> String -> LW m Doc
+              => [Inline] -> [Inline] -> String -> LW m (Doc Text)
 citeArguments p s k = do
   let s' = case s of
         (Str (x:[]) : r) | isPunctuation x -> dropWhile (== Space) r
