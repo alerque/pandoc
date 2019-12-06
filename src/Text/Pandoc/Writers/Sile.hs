@@ -647,7 +647,7 @@ inlineToSile (Image _ _ (source, _)) = do
   modify $ \s -> s{ stGraphics = True }
   let source' = if isURI source
                    then source
-                   else unEscapeString source
+                   else T.pack $ unEscapeString $ T.unpack source
   source'' <- stringToSile URLString source'
   return $ "\\img" <> brackets ("src=" <> text source'')
 inlineToSile (Note contents) = do
@@ -663,7 +663,8 @@ setEmptyLine :: PandocMonad m => Bool -> LW m ()
 setEmptyLine b = modify $ \st -> st{ stEmptyLine = b }
 
 citationsToNatbib :: PandocMonad m => [Citation] -> LW m (Doc Text)
-citationsToNatbib (one:[])
+citationsToNatbib
+            [one]
   = citeCommand c p s k
   where
     Citation { citationId = k
@@ -683,10 +684,12 @@ citationsToNatbib cits
   where
      noPrefix  = all (null . citationPrefix)
      noSuffix  = all (null . citationSuffix)
-     ismode m  = all (((==) m)  . citationMode)
-     p         = citationPrefix  $ head $ cits
-     s         = citationSuffix  $ last $ cits
-     ks        = intercalate ", " $ map citationId cits
+     ismode m  = all ((==) m  . citationMode)
+     p         = citationPrefix  $
+                 head cits
+     s         = citationSuffix  $
+                 last cits
+     ks        = T.intercalate ", " $ map citationId cits
 
 citationsToNatbib (c:cs) | citationMode c == AuthorInText = do
      author <- citeCommand "citeauthor" [] [] (citationId c)
@@ -710,17 +713,21 @@ citationsToNatbib cits = do
                NormalCitation -> citeCommand "citealp"  p s k
 
 citeCommand :: PandocMonad m
-            => String -> [Inline] -> [Inline] -> String -> LW m (Doc Text)
+            => Text -> [Inline] -> [Inline] -> Text -> LW m (Doc Text)
 citeCommand c p s k = do
   args <- citeArguments p s k
-  return $ text ("\\" ++ c) <> args
+  return $ literal ("\\" <> c) <> args
 
 citeArguments :: PandocMonad m
-              => [Inline] -> [Inline] -> String -> LW m (Doc Text)
+              => [Inline] -> [Inline] -> Text -> LW m (Doc Text)
 citeArguments p s k = do
-  let s' = case s of
-        (Str (x:[]) : r) | isPunctuation x -> dropWhile (== Space) r
-        (Str (x:xs) : r) | isPunctuation x -> Str xs : r
+  let s' = stripLocatorBraces $ case s of
+        (Str t : r) -> case T.uncons t of
+          Just (x, xs)
+            | T.null xs
+            , isPunctuation x -> dropWhile (== Space) r
+            | isPunctuation x -> Str xs : r
+          _ -> s
         _                -> s
   pdoc <- inlineListToSile p
   sdoc <- inlineListToSile s'
@@ -728,8 +735,13 @@ citeArguments p s k = do
                      (True, True ) -> empty
                      (True, False) -> brackets sdoc
                      (_   , _    ) -> brackets pdoc <> brackets sdoc
-  return $ optargs <> braces (text k)
+  return $ optargs <> braces (literal k)
 
+-- strip off {} used to define locator in pandoc-citeproc; see #5722
+stripLocatorBraces :: [Inline] -> [Inline]
+stripLocatorBraces = walk go
+  where go (Str xs) = Str $ T.filter (\c -> c /= '{' && c /= '}') xs
+        go x        = x
 
 
 pDocumentOptions :: P.Parsec String () [String]
