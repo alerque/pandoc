@@ -187,7 +187,7 @@ data StringContext = TextString
                    deriving (Eq)
 
 -- escape things as needed for Sile
-stringToSile :: PandocMonad m => StringContext -> String -> LW m String
+stringToSile :: PandocMonad m => StringContext -> Text -> LW m Text
 stringToSile  _     []     = return ""
 stringToSile  ctx (x:xs) = do
   rest <- stringToSile ctx xs
@@ -522,8 +522,9 @@ inlineListToSile lst =
     -- so we turn nbsps after hard breaks to \hspace commands.
     -- this is mostly used in verse.
  where fixLineInitialSpaces [] = []
-       fixLineInitialSpaces (LineBreak : Str s@('\160':_) : xs) =
-         LineBreak : fixNbsps s ++ fixLineInitialSpaces xs
+       fixLineInitialSpaces (LineBreak : Str s : xs)
+         | Just ('\160', _) <- T.uncons s
+         = LineBreak : fixNbsps s <> fixLineInitialSpaces xs
        fixLineInitialSpaces (x:xs) = x : fixLineInitialSpaces xs
        fixNbsps s = let (ys,zs) = span (=='\160') s
                     in  replicate (length ys) hspace ++ [Str zs]
@@ -609,37 +610,41 @@ inlineToSile SoftBreak = do
        WrapNone     -> return space
        WrapPreserve -> return cr
 inlineToSile Space = return space
-inlineToSile (Link _ txt ('#':ident, _)) = do
-  contents <- inlineListToSile txt
-  lab <- toLabel ident
-  return $ text "\\pdf:link" <> brackets ("dest=" <> text lab) <> braces contents
-inlineToSile (Link (_,_,kvs) txt (src, tit)) =
+inlineToSile (Link _ txt (src,_))
+  | Just ('#', ident) <- T.uncons src
+  = do
+      contents <- inlineListToSile txt
+      lab <- toLabel ident
+      return $ text "\\pdf:link" <> brackets ("dest=" <> literal lab) <> braces contents
+  | otherwise =
   case txt of
-        [Str x] | escapeURI x == src ->  -- autolink
+        [Str x] | unEscapeString (T.unpack x) == unEscapeString (T.unpack src) ->  -- autolink
              do modify $ \s -> s{ stUrl = True }
                 src' <- stringToSile URLString (escapeURI src)
-                return $ text $ "\\url{" ++ src' ++ "}"
-        [Str x] | Just rest <- stripPrefix "mailto:" src,
-                  escapeURI x == rest -> -- email autolink
+                return $ literal $ "\\url{" <> src' <> "}"
+        [Str x] | Just rest <- T.stripPrefix "mailto:" src,
+                  unEscapeString (T.unpack x) == unEscapeString (T.unpack rest) -> -- email autolink
              do modify $ \s -> s{ stUrl = True }
                 src' <- stringToSile URLString (escapeURI src)
                 contents <- inlineListToSile txt
-                return $ "\\href" <> braces (text src') <>
+                return $ "\\href" <> braces (literal src') <>
                    braces ("\\url" <> braces contents)
         _ -> do contents <- inlineListToSile txt
                 src' <- stringToSile URLString (escapeURI src)
-                let params = (["src=\"" ++ src' ++ "\""]) ++
-                              (if null tit
-                                then []
-                                else [ "title=\"" ++ tit ++ "\"" ]) ++
-                              (if null kvs
-                                  then []
-                                  else [ key ++ "=\"" ++ val ++ "\"" | (key, val) <- kvs ])
-                    linkattrs
-                      | null params = empty
-                      | otherwise = brackets $ hcat (intersperse "," (map text params))
-                return $ "\\href" <> linkattrs <> braces contents
-inlineToSile il@(Image _ _ ('d':'a':'t':'a':':':_, _)) = do
+                return $ literal ("\\href{" <> src' <> "}{") <> contents <> char '}'
+                -- let params = (["src=\"" <> literal src' <> "\""]) <>
+                --               (if null tit
+                --                 then []
+                --                 else [ "title=\"" ++ tit ++ "\"" ]) <>
+                --               (if null kvs
+                --                   then []
+                --                   else [ key ++ "=\"" ++ val ++ "\"" | (key, val) <- kvs ])
+                --     linkattrs
+                --       | null params = empty
+                --       | otherwise = brackets $ hcat (intersperse "," (map text params))
+                -- return $ literal ("\\href" <> linkattrs <> braces contents)
+inlineToSile il@(Image _ _ (src, _))
+  | Just _ <- T.stripPrefix "data:" src = do
   report $ InlineNotRendered il
   return empty
 inlineToSile (Image _ _ (source, _)) = do
@@ -649,7 +654,7 @@ inlineToSile (Image _ _ (source, _)) = do
                    then source
                    else T.pack $ unEscapeString $ T.unpack source
   source'' <- stringToSile URLString source'
-  return $ "\\img" <> brackets ("src=" <> text source'')
+  return $ "\\img" <> brackets ("src=" <> literal source'')
 inlineToSile (Note contents) = do
   setEmptyLine False
   contents' <- blockListToSile contents
