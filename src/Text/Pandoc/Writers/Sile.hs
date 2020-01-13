@@ -2,27 +2,10 @@
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE PatternGuards       #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-
-Copyright (C) 2006-2018 John MacFarlane <jgm@berkeley.edu>
-
-This program is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
--}
-
+{-# LANGUAGE ViewPatterns        #-}
 {- |
    Module      : Text.Pandoc.Writers.Sile
-   Copyright   : Copyright (C) 2015-2018 Caleb Maclennan
+   Copyright   : Copyright (C) 2015-2019 Caleb Maclennan
    License     : GNU GPL, version 2 or above
 
    Maintainer  : Caleb Maclennan <caleb@alerque.com>
@@ -37,12 +20,17 @@ module Text.Pandoc.Writers.Sile (
 import Prelude
 import Control.Applicative ((<|>))
 import Control.Monad.State.Strict
-import Data.Char (isAscii, isDigit, isLetter, isPunctuation, ord)
-import Data.List (foldl', intercalate, intersperse, stripPrefix, )
-import Data.Maybe (catMaybes, fromMaybe, isJust, mapMaybe)
+import Data.Monoid (Any(..))
+import Data.Char (isAlphaNum, isAscii, isDigit, isLetter, isSpace,
+                  isPunctuation, ord)
+import Data.List (foldl', intersperse, nubBy, (\\), uncons )
+import Data.Maybe (catMaybes, fromMaybe, isJust, mapMaybe, isNothing)
+import qualified Data.Map as M
 import Data.Text (Text)
 import qualified Data.Text as T
 import Network.URI (unEscapeString)
+import Text.DocTemplates (FromContext(lookupContext), renderTemplate,
+                          Val(..), Context(..))
 import Text.Pandoc.Class (PandocMonad, report, toLang)
 import Text.Pandoc.Definition
 import Text.Pandoc.ImageSize
@@ -50,13 +38,10 @@ import Text.Pandoc.Logging
 import Text.Pandoc.Options
 import Text.DocLayout
 import Text.Pandoc.Shared
-import Text.Pandoc.Templates (renderTemplate)
 import Text.DocTemplates (Val(..), Context(..))
 import Text.Pandoc.Walk
 import Text.Pandoc.Writers.Shared
-import qualified Text.Parsec as P
 import Text.Printf (printf)
--- import qualified Data.Text.Normalize as Normalize
 
 data WriterState =
   WriterState {
@@ -71,7 +56,7 @@ data WriterState =
               , stGraphics      :: Bool          -- true if document contains images
               , stLHS           :: Bool          -- true if document has literate haskell code
               , stBook          :: Bool          -- true if document uses book class
-              , stInternalLinks :: [String]      -- list of internal link targets
+              , stInternalLinks :: [Text]      -- list of internal link targets
               , stEmptyLine     :: Bool          -- true if no content on line
               }
 
@@ -107,7 +92,8 @@ pandocToSile :: PandocMonad m
 pandocToSile options (Pandoc meta blocks) = do
   let blocks' = blocks
   -- see if there are internal links
-  let isInternalLink (Link _ _ ('#':xs,_)) = [xs]
+  let isInternalLink (Link _ _ (s,_))
+        | Just ('#', xs) <- T.uncons s = [xs]
       isInternalLink _                     = []
   modify $ \s -> s{ stInternalLinks = query isInternalLink blocks' }
   -- set stBook depending on documentclass
@@ -118,18 +104,16 @@ pandocToSile options (Pandoc meta blocks) = do
               blockListToSile
               (fmap chomp . inlineListToSile)
               meta
-  let bookClasses = ["book", "bible"]
   let documentClass =
-        case lookup "documentclass" (writerVariables options) `mplus`
-              fmap stringify (lookupMeta "documentclass" meta) of
+        case lookupContext "documentclass" (writerVariables options) `mplus`
+              (stringify <$> lookupMeta "documentclass" meta) of
                  Just x -> x
   let (blocks'', lastHeader) = if writerCiteMethod options == Citeproc then
                                  (blocks', [])
-                               else case last blocks' of
-                                 Header 1 _ il -> (init blocks', il)
+                               else case reverse blocks' of
+                                 Header 1 _ il : _ -> (init blocks', il)
                                  _             -> (blocks', [])
-  blocks''' <- return blocks''
-  main <- blockListToSile $ makeSections False Nothing blocks'''
+  main <- blockListToSile blocks''
   st <- get
   titleMeta <- stringToSile TextString $ stringify $ docTitle meta
   authorsMeta <- mapM (stringToSile TextString . stringify) $ docAuthors meta
@@ -144,37 +128,34 @@ pandocToSile options (Pandoc meta blocks) = do
                               ]
 
   let context  =  defField "toc" (writerTableOfContents options) $
-                  defField "toc-depth" (T.pack .  show $
+                  defField "toc-depth" (tshow
                                         (writerTOCDepth options -
                                               if stBook st
                                                  then 1
                                                  else 0)) $
                   defField "body" main $
-                  defField "title-meta" (T.pack titleMeta) $
+                  defField "title-meta" titleMeta $
                   defField "author-meta"
-                        (T.pack $ intercalate "; " authorsMeta) $
-                  defField "documentclass" (T.pack documentClass) $
+                        (T.intercalate "; " authorsMeta) $
+                  defField "documentclass" documentClass $
                   defField "tables" (stTable st) $
                   defField "strikeout" (stStrikeout st) $
                   defField "url" (stUrl st) $
                   defField "numbersections" (writerNumberSections options) $
                   defField "lhs" (stLHS st) $
                   defField "graphics" (stGraphics st) $
-                  defField "book-class" (stBook st) $
-                  (case writerCiteMethod options of
-                         _        -> id) $
                   defField "colorlinks" (any hasStringValue
                            ["citecolor", "urlcolor", "linkcolor", "toccolor",
                             "filecolor"]) $
                   defField "section-titles" True $
                   defField "geometry" geometryFromMargins $
-                  (case T.unpack . render Nothing <$>
+                  (case T.uncons . render Nothing <$>
                         getField "papersize" metadata of
                         -- uppercase a4, a5, etc.
-                        Just (('A':d:ds) :: String)
-                          | all isDigit (d:ds) -> resetField "papersize"
-                                                    (T.pack ('a':d:ds))
-                        _                     -> id)
+                      Just (Just ('A', ds))
+                        | not (T.null ds) && T.all isDigit ds
+                          -> resetField "papersize" ("a" <> ds)
+                      _   -> id)
                   metadata
   return $ render colwidth $
     case writerTemplate options of
@@ -188,44 +169,49 @@ data StringContext = TextString
 
 -- escape things as needed for Sile
 stringToSile :: PandocMonad m => StringContext -> Text -> LW m Text
-stringToSile  _     []     = return ""
-stringToSile  ctx (x:xs) = do
-  rest <- stringToSile ctx xs
-  let isUrl = ctx == URLString
-  return $
-    case x of
-       '{' -> "\\{" ++ rest
-       '}' -> "\\}" ++ rest
-       '%' -> "\\%" ++ rest
-       '\\'| isUrl     -> '/' : rest  -- NB. / works as path sep even on Windows
-           | otherwise -> "\\\\" ++ rest
-       _        -> x : rest
+stringToSile  context zs = do
+  opts <- gets stOptions
+  return $ T.pack $
+    foldr (go opts context) mempty $ T.unpack $ zs
+ where
+  go :: WriterOptions -> StringContext -> Char -> String -> String
+  go opts ctx x xs   =
+    let isUrl = ctx == URLString
+        emits s = s <> xs
+        emitc c = c : xs
+    in case x of
+         '{' -> emits "\\{"
+         '}' -> emits "\\}"
+         '%' -> emits "\\%"
+         '\\'| isUrl     -> emitc '/' -- NB. / works as path sep even on Windows
+             | otherwise -> emits "\\"
+         _ -> emitc x
 
-toLabel :: PandocMonad m => String -> LW m String
+toLabel :: PandocMonad m => Text -> LW m Text
 toLabel z = go `fmap` stringToSile URLString z
- where go [] = ""
-       go (x:xs)
-         | (isLetter x || isDigit x) && isAscii x = x:go xs
-         | x `elem` ("_-+=:;." :: String) = x:go xs
-         | otherwise = "ux" ++ printf "%x" (ord x) ++ go xs
+ where
+   go = T.concatMap $ \x -> case x of
+     _ | (isLetter x || isDigit x) && isAscii x -> T.singleton x
+       | x `elemText` "_-+=:;." -> T.singleton x
+       | otherwise -> T.pack $ "ux" <> printf "%x" (ord x)
 
 -- | Puts contents into Sile command.
-inCmd :: String -> Doc Text -> Doc Text
-inCmd cmd contents = char '\\' <> text cmd <> braces contents
+inCmd :: Text -> Doc Text -> Doc Text
+inCmd cmd contents = char '\\' <> literal cmd <> braces contents
 
-inArgCmd :: String -> [String] -> Doc Text -> Doc Text
+inArgCmd :: Text -> [String] -> Doc Text -> Doc Text
 inArgCmd cmd args contents = do
   let args' = if null args
                  then ""
                  else brackets $ hcat (intersperse "," (map text args))
-  char '\\' <> text cmd <> args' <> braces contents
+  char '\\' <> literal cmd <> args' <> braces contents
 
-inBlockCmd :: String -> [String] -> Doc Text -> Doc Text
+inBlockCmd :: Text -> [String] -> Doc Text -> Doc Text
 inBlockCmd cmd args contents = do
   let args' = if null args
                  then ""
                  else brackets $ hcat (intersperse "," (map text args))
-      cmd' = braces (text cmd)
+      cmd' = braces (literal cmd)
   "\\begin" <> args' <> cmd' $$ contents $$ "\\end" <> cmd'
 
 isLineBreakOrSpace :: Inline -> Bool
@@ -244,7 +230,7 @@ blockToSile (Div (id,classes,kvs) bs) = do
   lang <- toLang $ lookup "lang" kvs
   let linkAnchor = if null id
                       then empty
-                      else "\\pdf:link" <> braces (text ref)
+                      else "\\pdf:link" <> braces (literal ref)
   let classes' = [ val | (val) <- classes ]
   let classes'' = intercalate "," classes'
   let params = (if id == ""
@@ -291,18 +277,18 @@ blockToSile (CodeBlock (identifier,classes,kvs) str) = do
                   else [ key ++ "=" ++ attr | (key, attr) <- kvs ])
       sileParams
           | null params = empty
-          | otherwise = brackets $ hcat (intersperse "," (map text params))
+          | otherwise = brackets $ hcat (intersperse "," (map literal params))
   let linkAnchor = if null identifier
                       then empty
-                      else "\\pdf:link" <> brackets (text ref) <> braces (text ref)
+                      else "\\pdf:link" <> brackets (literal ref) <> braces (literal ref)
   let lhsCodeBlock = do
         modify $ \s -> s{ stLHS = True }
-        return $ flush (linkAnchor $$ "\\begin{code}" $$ text str $$
+        return $ flush (linkAnchor $$ "\\begin{code}" $$ literal str $$
                             "\\end{code}") $$ cr
   let rawCodeBlock = do
         env <- return "verbatim"
-        return $ flush (linkAnchor $$ text ("\\begin{" ++ env ++ "}") $$
-                 text str $$ text ("\\end{" ++ env ++ "}")) <> cr
+        return $ flush (linkAnchor $$ literal ("\\begin{" ++ env ++ "}") $$
+                 literal str $$ literal ("\\end{" ++ env ++ "}")) <> cr
 
   case () of
      _ | isEnabled Ext_literate_haskell opts && "haskell" `elem` classes &&
@@ -310,14 +296,14 @@ blockToSile (CodeBlock (identifier,classes,kvs) str) = do
        | otherwise                           -> rawCodeBlock
 blockToSile b@(RawBlock f x)
   | f == Format "sile" || f == Format "sil"
-                        = return $ text x
+                        = return $ literal x
   | otherwise           = do
       report $ BlockNotRendered b
       return empty
 blockToSile (BulletList []) = return empty  -- otherwise sile error
 blockToSile (BulletList lst) = do
   items <- mapM listItemToSile lst
-  return $ text ("\\begin{listarea}") $$ vcat items $$
+  return $ literal ("\\begin{listarea}") $$ vcat items $$
              "\\end{listarea}"
 blockToSile (OrderedList _ []) = return empty -- otherwise error
 blockToSile (OrderedList (_, numstyle, _) lst) = do
@@ -334,7 +320,7 @@ blockToSile (OrderedList (_, numstyle, _) lst) = do
                        LowerAlpha   -> "alpha"
                        Example      -> "arabic"
                        DefaultStyle -> "arabic"
-  return $ text ("\\begin[" ++ tostyle ++ "]{listarea}")
+  return $ literal ("\\begin[" ++ tostyle ++ "]{listarea}")
          $$ vcat items
          $$ "\\end{listarea}"
 blockToSile (DefinitionList []) = return empty
@@ -368,24 +354,25 @@ blockToSile (Table caption aligns widths heads rows) = do
   captionText <- inlineListToSile caption
   let capt = if isEmpty captionText
                 then empty
-                else text "\\caption" <> braces captionText <> "\\tabularnewline"
+                else "\\caption" <> braces captionText
+                         <> "\\tabularnewline"
                          $$ headers
                          $$ endfirsthead
   rows' <- mapM (tableRowToSile False aligns widths) rows
-  let colDescriptors = text $ concat $ map toColDescriptor aligns
+  let colDescriptors = literal $ T.concat $ map toColDescriptor aligns
   modify $ \s -> s{ stTable = True }
   return $ "\\begin{longtable}[]" <>
               braces ("@{}" <> colDescriptors <> "@{}")
               -- the @{} removes extra space at beginning and end
          $$ capt
-         $$ (if all null heads then "\\toprule" else empty)
-         $$ headers
-         $$ endhead
+         $$ firsthead
+         $$ head'
+         $$ "\\endhead"
          $$ vcat rows'
          $$ "\\bottomrule"
          $$ "\\end{longtable}"
 
-toColDescriptor :: Alignment -> String
+toColDescriptor :: Alignment -> Text
 toColDescriptor align =
   case align of
          AlignLeft    -> "l"
@@ -505,19 +492,18 @@ sectionHeader unnumbered ident level lst = do
               else text ('\\':sectionType) <> braces txt
 
 
-labelFor :: PandocMonad m => String -> LW m (Doc Text)
+labelFor :: PandocMonad m => Text -> LW m (Doc Text)
 labelFor ""    = return empty
 labelFor ident = do
-  ref <- text `fmap` toLabel ident
+  ref <- literal `fmap` toLabel ident
   return $ text "\\label" <> braces ref
 
 -- | Convert list of inline elements to Sile.
 inlineListToSile :: PandocMonad m
                   => [Inline]  -- ^ Inlines to convert
                   -> LW m (Doc Text)
-inlineListToSile lst =
-  mapM inlineToSile (fixLineInitialSpaces lst)
-    >>= return . hcat
+inlineListToSile lst = hcat <$>
+  mapM inlineToSile (fixLineInitialSpaces $ lst)
     -- nonbreaking spaces (~) in Sile don't work after line breaks,
     -- so we turn nbsps after hard breaks to \hspace commands.
     -- this is mostly used in verse.
@@ -526,16 +512,16 @@ inlineListToSile lst =
          | Just ('\160', _) <- T.uncons s
          = LineBreak : fixNbsps s <> fixLineInitialSpaces xs
        fixLineInitialSpaces (x:xs) = x : fixLineInitialSpaces xs
-       fixNbsps s = let (ys,zs) = span (=='\160') s
-                    in  replicate (length ys) hspace ++ [Str zs]
+       fixNbsps s = let (ys,zs) = T.span (=='\160') s
+                    in  replicate (T.length ys) hspace <> [Str zs]
        hspace = RawInline "sile" "\\kern[width=1spc]"
 
 -- | Convert inline element to Sile
 inlineToSile :: PandocMonad m
               => Inline    -- ^ Inline to convert
               -> LW m (Doc Text)
-inlineToSile (Span (id,classes,kvs) ils) = do
-  ref <- toLabel id
+inlineToSile (Span (id',classes,kvs) ils) = do
+  ref <- toLabel id'
   lang <- toLang $ lookup "lang" kvs
   let classToCommand = [ "csl-no-emph", "csl-no-strong", "csl-no-smallcaps" ]
   let commands = filter (`elem` classToCommand) classes
@@ -544,15 +530,15 @@ inlineToSile (Span (id,classes,kvs) ils) = do
   let classes' = filter (`notElem` [ "csl-no-emph", "csl-no-strong", "csl-no-smallcaps"]) classes
   let classes'' = [ val | (val) <- classes' ]
   let classes''' = intercalate "," classes''
-  let params = (if id == ""
+  let params = (if id' == ""
                   then []
-                  else [ "id=" ++ ref ]) ++
+                  else [ "id=" <> ref ]) <>
                (if null classes'
                   then []
-                  else [ "classes=\"" ++ classes''' ++ "\"" ] ) ++
+                  else [ "classes=\"" <> classes''' <> "\"" ] ) <>
                 (if null kvs
                   then []
-                  else [ key ++ "=" ++ attr | (key, attr) <- kvs ])
+                  else [ key <> "=" <> attr | (key, attr) <- kvs ])
   return $ if null commands
               then if null params
                       then braces contents
@@ -560,18 +546,12 @@ inlineToSile (Span (id,classes,kvs) ils) = do
               else if null params
                       then foldr inCmd contents commands
                       else inArgCmd "Span" params $ foldr inCmd contents commands
-inlineToSile (Emph lst) =
-  inlineListToSile lst >>= return . inCmd "Emph"
-inlineToSile (Strong lst) =
-  inlineListToSile lst >>= return . inCmd "Strong"
-inlineToSile (Strikeout lst) =
-  inlineListToSile lst >>= return . inCmd "Strikeout"
-inlineToSile (Superscript lst) =
-  inlineListToSile lst >>= return . inCmd "Superscript"
-inlineToSile (Subscript lst) =
-  inlineListToSile lst >>= return . inCmd "Subscript"
-inlineToSile (SmallCaps lst) =
-  inlineListToSile lst >>= return . inCmd "SmallCaps"
+inlineToSile (Emph lst) = inCmd "Emph" <$> inlineListToSile lst
+inlineToSile (Strong lst) = inCmd "Strong" <$> inlineListToSile lst
+inlineToSile (Strikeout lst) = inCmd "Strikeout" <$> inlineListToSile lst
+inlineToSile (Superscript lst) = inCmd "Superscript" <$> inlineListToSile lst
+inlineToSile (Subscript lst) = inCmd "Subscript" <$> inlineListToSile lst
+inlineToSile (SmallCaps lst) = inCmd "SmallCaps" <$> inlineListToSile lst
 inlineToSile (Cite cits lst) = do
   st <- get
   let opts = stOptions st
@@ -748,23 +728,3 @@ stripLocatorBraces = walk go
   where go (Str xs) = Str $ T.filter (\c -> c /= '{' && c /= '}') xs
         go x        = x
 
-
-pDocumentOptions :: P.Parsec String () [String]
-pDocumentOptions = do
-  P.char '['
-  opts <- P.sepBy
-    (P.many $ P.spaces *> P.noneOf (" ,]" :: String) <* P.spaces)
-    (P.char ',')
-  P.char ']'
-  return opts
-
-pDocumentClass :: P.Parsec String () String
-pDocumentClass =
-  do P.skipMany (P.satisfy (/='\\'))
-     P.string "\\documentclass"
-     classOptions <- pDocumentOptions <|> return []
-     if ("article" :: String) `elem` classOptions
-       then return "article"
-       else do P.skipMany (P.satisfy (/='{'))
-               P.char '{'
-               P.manyTill P.letter (P.char '}')
