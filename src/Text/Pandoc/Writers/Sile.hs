@@ -218,25 +218,25 @@ blockToSile :: PandocMonad m
              => Block     -- ^ Block to convert
              -> LW m (Doc Text)
 blockToSile Null = return empty
-blockToSile (Div (id,classes,kvs) bs) = do
-  ref <- toLabel id
-  lang <- toLang $ lookup "lang" kvs
-  let linkAnchor = if T.null id
-                      then empty
-                      else "\\pdf:link" <> braces (literal ref)
-  let classes' = [ val | (val) <- classes ]
-  let classes'' = T.intercalate "," classes'
-  let params = (if id == ""
-                  then []
-                  else [ "id=" <> ref ]) ++
-               (if T.null classes''
-                  then []
-                  else [ "classes=\"" <> classes'' <> "\"" ] ) ++
-                (if T.null kvs
-                  then []
-                  else [ key ++ "=" <> attr | (key, attr) <- kvs ])
-  contents <- blockListToSile bs
-  return $ inBlockCmd "Div" params (linkAnchor $$ contents)
+-- blockToSile (Div (id,classes,kvs) bs) = do
+--   ref <- toLabel id
+--   lang <- toLang $ lookup "lang" kvs
+--   let linkAnchor = if T.null id
+--                       then empty
+--                       else "\\pdf:link" <> braces (literal ref)
+--   let classes' = [ val | (val) <- classes ]
+--   let classes'' = T.intercalate "," classes'
+--   let params = (if id == ""
+--                   then []
+--                   else [ "id=" <> ref ]) ++
+--                (if T.null classes''
+--                   then []
+--                   else [ "classes=\"" <> classes'' <> "\"" ] ) ++
+--                 (if T.null kvs
+--                   then []
+--                   else [ key ++ "=" <> attr | (key, attr) <- kvs ])
+--   contents <- blockListToSile bs
+--   return $ inBlockCmd "Div" params (linkAnchor $$ contents)
 blockToSile (Plain lst) =
   inlineListToSile lst
 blockToSile (Para [Str ".",Space,Str ".",Space,Str "."]) = do
@@ -253,40 +253,40 @@ blockToSile (BlockQuote lst) = do
          contents <- blockListToSile lst
          modify (\s -> s{stInQuote = oldInQuote})
          return $ "\\begin{quote}" $$ contents $$ "\\end{quote}"
-blockToSile (CodeBlock (identifier,classes,kvs) str) = do
-  opts <- gets stOptions
-  lab <- labelFor identifier
-  str' <- stringToSile CodeString str
-  let classes' = [ val | (val) <- classes ]
-  let classes'' = T.intercalate "," classes'
-  let params = (if identifier == ""
-                  then []
-                  else [ "id=" ++ lab ]) ++
-               (if null classes
-                  then []
-                  else [ "classes=\"" ++ classes'' ++ "\"" ] ) ++
-                (if null kvs
-                  then []
-                  else [ key ++ "=" ++ attr | (key, attr) <- kvs ])
-      sileParams
-          | null params = empty
-          | otherwise = brackets $ hcat (intersperse "," (map literal params))
-  let linkAnchor = if null identifier
-                      then empty
-                      else "\\pdf:link" <> brackets (literal lab) <> braces (literal lab)
-  let lhsCodeBlock = do
-        modify $ \s -> s{ stLHS = True }
-        return $ flush (linkAnchor $$ "\\begin{code}" $$ literal str $$
-                            "\\end{code}") $$ cr
-  let rawCodeBlock = do
-        env <- return "verbatim"
-        return $ flush (linkAnchor $$ literal ("\\begin{" <> env <> "}") $$
-                 literal str $$ literal ("\\end{" <> env <> "}")) <> cr
+-- blockToSile (CodeBlock (identifier,classes,keyvalAttr) str) = do
+--   opts <- gets stOptions
+--   lab <- labelFor identifier
+--   str' <- stringToSile CodeString str
+--   let classes' = [ val | (val) <- classes ]
+--   let classes'' = T.intercalate "," classes'
+--   let params = (if identifier == ""
+--                   then []
+--                   else [ "id=" ++ lab ]) ++
+--                (if null classes
+--                   then []
+--                   else [ "classes=\"" ++ classes'' ++ "\"" ] ) ++
+--                 (if null keyvalAttr
+--                   then []
+--                   else [ key ++ "=" ++ attr | (key, attr) <- keyvalAttr ])
+--       sileParams
+--           | null params = empty
+--           | otherwise = brackets $ hcat (intersperse "," (map literal params))
+--   let linkAnchor = if null identifier
+--                       then empty
+--                       else "\\pdf:link" <> brackets (literal lab) <> braces (literal lab)
+--   let lhsCodeBlock = do
+--         modify $ \s -> s{ stLHS = True }
+--         return $ flush (linkAnchor $$ "\\begin{code}" $$ literal str $$
+--                             "\\end{code}") $$ cr
+--   let rawCodeBlock = do
+--         env <- return "verbatim"
+--         return $ flush (linkAnchor $$ literal ("\\begin{" <> env <> "}") $$
+--                  literal str $$ literal ("\\end{" <> env <> "}")) <> cr
 
-  case () of
-     _ | isEnabled Ext_literate_haskell opts && "haskell" `elem` classes &&
-         "literate" `elem` classes           -> lhsCodeBlock
-       | otherwise                           -> rawCodeBlock
+--   case () of
+--      _ | isEnabled Ext_literate_haskell opts && "haskell" `elem` classes &&
+--          "literate" `elem` classes           -> lhsCodeBlock
+--        | otherwise                           -> rawCodeBlock
 blockToSile b@(RawBlock f x)
   | f == Format "sile" || f == Format "sil"
                         = return $ literal x
@@ -332,36 +332,36 @@ blockToSile (Header level (id',classes,_) lst) = do
   hdr <- sectionHeader classes id' level lst
   modify $ \s -> s{stInHeading = False}
   return hdr
-blockToSile (Table caption aligns widths heads rows) = do
-  headers <- if all null heads
-                then return empty
-                else do
-                    contents <- (tableRowToSile True aligns widths) heads
-                    return ("\\toprule" $$ contents $$ "\\midrule")
-  let endhead = if all null heads
-                   then empty
-                   else text "\\endhead"
-  let endfirsthead = if all null heads
-                       then empty
-                       else text "\\endfirsthead"
-  captionText <- inlineListToSile caption
-  let capt = if isEmpty captionText
-                then empty
-                else "\\caption" <> braces captionText
-                         <> "\\tabularnewline"
-                         $$ headers
-                         $$ endfirsthead
-  rows' <- mapM (tableRowToSile False aligns widths) rows
-  let colDescriptors = literal $ T.concat $ map toColDescriptor aligns
-  modify $ \s -> s{ stTable = True }
-  return $ "\\begin{longtable}[]" <>
-              braces ("@{}" <> colDescriptors <> "@{}")
-              -- the @{} removes extra space at beginning and end
-         $$ capt
-         $$ "\\endhead"
-         $$ vcat rows'
-         $$ "\\bottomrule"
-         $$ "\\end{longtable}"
+-- blockToSile (Table caption aligns widths heads rows) = do
+--   headers <- if all null heads
+--                 then return empty
+--                 else do
+--                     contents <- (tableRowToSile True aligns widths) heads
+--                     return ("\\toprule" $$ contents $$ "\\midrule")
+--   let endhead = if all null heads
+--                    then empty
+--                    else text "\\endhead"
+--   let endfirsthead = if all null heads
+--                        then empty
+--                        else text "\\endfirsthead"
+--   captionText <- inlineListToSile caption
+--   let capt = if isEmpty captionText
+--                 then empty
+--                 else "\\caption" <> braces captionText
+--                          <> "\\tabularnewline"
+--                          $$ headers
+--                          $$ endfirsthead
+--   rows' <- mapM (tableRowToSile False aligns widths) rows
+--   let colDescriptors = literal $ T.concat $ map toColDescriptor aligns
+--   modify $ \s -> s{ stTable = True }
+--   return $ "\\begin{longtable}[]" <>
+--               braces ("@{}" <> colDescriptors <> "@{}")
+--               -- the @{} removes extra space at beginning and end
+--          $$ capt
+--          $$ "\\endhead"
+--          $$ vcat rows'
+--          $$ "\\bottomrule"
+--          $$ "\\end{longtable}"
 
 toColDescriptor :: Alignment -> Text
 toColDescriptor align =
@@ -535,10 +535,12 @@ inlineToSile (Span (id',classes,kvs) ils) = do
   return $ if null cmds
               then if null params
                       then braces contents
-                      else inArgCmd "Span" params contents
+                      -- else inArgCmd "Span" params contents
+                      else ""
               else if null params
                       then foldr inCmd contents cmds
-                      else inArgCmd "Span" params $ foldr inCmd contents cmds
+                      -- else inArgCmd "Span" params $ foldr inCmd contents cmds
+                      else ""
 
 inlineToSile (Emph lst) =
   inCmd "Emph" <$> inlineListToSile lst
