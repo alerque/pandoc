@@ -1072,21 +1072,21 @@ rawVerbatimBlock = htmlInBalanced isVerbTag
 rawSilBlock :: PandocMonad m => MarkdownParser m (F Blocks)
 rawSilBlock = do
   guardEnabled Ext_raw_sile
-  result <- (B.rawBlock "sile" . concat <$>
-                  rawSileBlock `sepEndBy1` blankline)
-
-  optional blanklines
-  return $ return result
+  result <- (B.rawBlock "sile" . trim . T.concat <$>
+                many1 ((<>) <$> rawSileBlock <*> spnl'))
+  return $ case B.toList result of
+                [RawBlock _ cs]
+                  | T.all (`elem` [' ','\t','\n']) cs -> return mempty
+                -- don't create a raw block for suppressed macro defs
+                _ -> return result
 
 rawTeXBlock :: PandocMonad m => MarkdownParser m (F Blocks)
 rawTeXBlock = do
   guardEnabled Ext_raw_tex
   result <- (B.rawBlock "tex" . trim . T.concat <$>
-                many1 ((++) <$> rawConTeXtEnvironment <*> spnl'))
+                many1 ((<>) <$> rawConTeXtEnvironment <*> spnl'))
           <|> (B.rawBlock "tex" . trim . T.concat <$>
-                many1 ((++) <$> rawLaTeXBlock <*> spnl'))
-          <|> (B.rawBlock "sile" . trim . T.concat <$>
-                many1 ((++) <$> rawSileBlock <*> spnl'))
+                many1 ((<>) <$> rawLaTeXBlock <*> spnl'))
   return $ case B.toList result of
                 [RawBlock _ cs]
                   | T.all (`elem` [' ','\t','\n']) cs -> return mempty
