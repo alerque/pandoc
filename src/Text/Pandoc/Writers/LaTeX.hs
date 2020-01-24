@@ -201,11 +201,11 @@ pandocToLaTeX options (Pandoc meta blocks) = do
   let context  =  defField "toc" (writerTableOfContents options) $
                   defField "toc-depth" (tshow
                                         (writerTOCDepth options -
-                                              if stBook st
+                                              if stHasChapters st
                                                  then 1
                                                  else 0)) $
                   defField "body" main $
-                  defField "title-meta" (T.pack titleMeta) $
+                  defField "title-meta" titleMeta $
                   defField "author-meta"
                         (T.intercalate "; " authorsMeta) $
                   defField "documentclass" documentClass $
