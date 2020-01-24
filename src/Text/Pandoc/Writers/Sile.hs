@@ -213,12 +213,6 @@ inBlockCmd cmd args contents = do
       cmd' = braces (literal cmd)
   "\\begin" <> args' <> cmd' $$ contents $$ "\\end" <> cmd'
 
-isLineBreakOrSpace :: Inline -> Bool
-isLineBreakOrSpace LineBreak = True
-isLineBreakOrSpace SoftBreak = True
-isLineBreakOrSpace Space     = True
-isLineBreakOrSpace _         = False
-
 -- | Convert Pandoc block element to Sile.
 blockToSile :: PandocMonad m
              => Block     -- ^ Block to convert
@@ -231,7 +225,7 @@ blockToSile (Div (id,classes,kvs) bs) = do
                       then empty
                       else "\\pdf:link" <> braces (literal ref)
   let classes' = [ val | (val) <- classes ]
-  let classes'' = intercalate "," classes'
+  let classes'' = T.intercalate "," classes'
   let params = (if id == ""
                   then []
                   else [ "id=" ++ ref ]) ++
@@ -244,11 +238,11 @@ blockToSile (Div (id,classes,kvs) bs) = do
   contents <- blockListToSile bs
   return $ inBlockCmd "Div" params (linkAnchor $$ contents)
 blockToSile (Plain lst) =
-  inlineListToSile $ dropWhile isLineBreakOrSpace lst
+  inlineListToSile lst
 blockToSile (Para [Str ".",Space,Str ".",Space,Str "."]) = do
   inlineListToSile [Str ".",Space,Str ".",Space,Str "."]
 blockToSile (Para lst) =
-  inlineListToSile $ dropWhile isLineBreakOrSpace lst
+  inlineListToSile lst
 blockToSile (LineBlock lns) =
   blockToSile $ linesToPara lns
 blockToSile (BlockQuote lst) = do
@@ -261,13 +255,13 @@ blockToSile (BlockQuote lst) = do
          return $ "\\begin{quote}" $$ contents $$ "\\end{quote}"
 blockToSile (CodeBlock (identifier,classes,kvs) str) = do
   opts <- gets stOptions
-  ref <- toLabel identifier
+  lab <- labelFor identifier
   str' <- stringToSile CodeString str
   let classes' = [ val | (val) <- classes ]
-  let classes'' = intercalate "," classes'
+  let classes'' = T.intercalate "," classes'
   let params = (if identifier == ""
                   then []
-                  else [ "id=" ++ ref ]) ++
+                  else [ "id=" ++ lab ]) ++
                (if null classes
                   then []
                   else [ "classes=\"" ++ classes'' ++ "\"" ] ) ++
@@ -279,15 +273,15 @@ blockToSile (CodeBlock (identifier,classes,kvs) str) = do
           | otherwise = brackets $ hcat (intersperse "," (map literal params))
   let linkAnchor = if null identifier
                       then empty
-                      else "\\pdf:link" <> brackets (literal ref) <> braces (literal ref)
+                      else "\\pdf:link" <> brackets (literal lab) <> braces (literal lab)
   let lhsCodeBlock = do
         modify $ \s -> s{ stLHS = True }
         return $ flush (linkAnchor $$ "\\begin{code}" $$ literal str $$
                             "\\end{code}") $$ cr
   let rawCodeBlock = do
         env <- return "verbatim"
-        return $ flush (linkAnchor $$ literal ("\\begin{" ++ env ++ "}") $$
-                 literal str $$ literal ("\\end{" ++ env ++ "}")) <> cr
+        return $ flush (linkAnchor $$ literal ("\\begin{" <> env <> "}") $$
+                 literal str $$ literal ("\\end{" <> env <> "}")) <> cr
 
   case () of
      _ | isEnabled Ext_literate_haskell opts && "haskell" `elem` classes &&
@@ -319,7 +313,7 @@ blockToSile (OrderedList (_, numstyle, _) lst) = do
                        LowerAlpha   -> "alpha"
                        Example      -> "arabic"
                        DefaultStyle -> "arabic"
-  return $ literal ("\\begin[" ++ tostyle ++ "]{listarea}")
+  return $ text ("\\begin[" ++ tostyle ++ "]{listarea}")
          $$ vcat items
          $$ "\\end{listarea}"
 blockToSile (DefinitionList []) = return empty
@@ -335,7 +329,7 @@ blockToSile HorizontalRule = return $
   "\\HorizontalRule"
 blockToSile (Header level (id',classes,_) lst) = do
   modify $ \s -> s{stInHeading = True}
-  hdr <- sectionHeader ("unnumbered" `elem` classes) id' level lst
+  hdr <- sectionHeader classes id' level lst
   modify $ \s -> s{stInHeading = False}
   return hdr
 blockToSile (Table caption aligns widths heads rows) = do
@@ -364,8 +358,6 @@ blockToSile (Table caption aligns widths heads rows) = do
               braces ("@{}" <> colDescriptors <> "@{}")
               -- the @{} removes extra space at beginning and end
          $$ capt
-         $$ firsthead
-         $$ head'
          $$ "\\endhead"
          $$ vcat rows'
          $$ "\\bottomrule"
@@ -454,15 +446,17 @@ defListItemToSile (term, defs) = do
 
 -- | Craft the section header, inserting the secton reference, if supplied.
 sectionHeader :: PandocMonad m
-              => Bool    -- True for unnumbered
-              -> [Char]
+              => [Text]  -- classes
+              -> Text
               -> Int
               -> [Inline]
               -> LW m (Doc Text)
-sectionHeader unnumbered ident level lst = do
+sectionHeader classes ident level lst = do
+  let unnumbered = "unnumbered" `elem` classes
+  let unlisted = "unlisted" `elem` classes
   txt <- inlineListToSile lst
   let removeInvalidInline (Note _)             = []
-      removeInvalidInline (Span (id', _, _) _) | not (null id') = []
+      removeInvalidInline (Span (id', _, _) _) | not (T.null id') = []
       removeInvalidInline Image{}            = []
       removeInvalidInline x                    = [x]
   let lstNoNotes = foldr (mappend . (\x -> walkM removeInvalidInline x)) mempty lst
@@ -523,12 +517,12 @@ inlineToSile (Span (id',classes,kvs) ils) = do
   ref <- toLabel id'
   lang <- toLang $ lookup "lang" kvs
   let classToCommand = [ "csl-no-emph", "csl-no-strong", "csl-no-smallcaps" ]
-  let commands = filter (`elem` classToCommand) classes
+  let cmds = filter (`elem` classToCommand) classes
   let classes' = filter (`notElem` classToCommand) classes
   contents <- inlineListToSile ils
   let classes' = filter (`notElem` [ "csl-no-emph", "csl-no-strong", "csl-no-smallcaps"]) classes
   let classes'' = [ val | (val) <- classes' ]
-  let classes''' = intercalate "," classes''
+  let classes''' = T.intercalate "," classes''
   let params = (if id' == ""
                   then []
                   else [ "id=" <> ref ]) <>
@@ -538,13 +532,13 @@ inlineToSile (Span (id',classes,kvs) ils) = do
                 (if null kvs
                   then []
                   else [ key <> "=" <> attr | (key, attr) <- kvs ])
-  return $ if null commands
+  return $ if null cmds
               then if null params
                       then braces contents
                       else inArgCmd "Span" params contents
               else if null params
-                      then foldr inCmd contents commands
-                      else inArgCmd "Span" params $ foldr inCmd contents commands
+                      then foldr inCmd contents cmds
+                      else inArgCmd "Span" params $ foldr inCmd contents cmds
 inlineToSile (Emph lst) =
   inCmd "Emph" <$> inlineListToSile lst
 inlineToSile (Strong lst) =
