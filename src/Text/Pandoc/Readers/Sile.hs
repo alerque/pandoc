@@ -131,7 +131,7 @@ rawSileBlock = do
   lookAhead (try (char '\\' >> letter))
   inp <- getInput
   let toks = tokenize "source" inp
-  snd <$> (rawSileParser toks False (macroDef (const mempty)) blocks
+  snd <$> (rawSileParser toks False mempty blocks
       <|> (rawSileParser toks True
              (do choice (map controlSeq
                    ["include", "input", "subfile", "usepackage"])
@@ -491,14 +491,10 @@ quoted' f starter ender = do
 enquote :: PandocMonad m => Bool -> Maybe Text -> LP m Inlines
 enquote starred mblang = do
   skipopts
-  let lang = mblang >>= babelLangToBCP47
-  let langspan = case lang of
-                      Nothing -> id
-                      Just l  -> spanWith ("",[],[("lang", renderLang l)])
   quoteContext <- sQuoteContext <$> getState
   if starred || quoteContext == InDoubleQuote
-     then singleQuoted . langspan <$> withQuoteContext InSingleQuote tok
-     else doubleQuoted . langspan <$> withQuoteContext InDoubleQuote tok
+     then singleQuoted <$> withQuoteContext InSingleQuote tok
+     else doubleQuoted <$> withQuoteContext InDoubleQuote tok
 
 blockquote :: PandocMonad m => Bool -> Maybe Text -> LP m Blocks
 blockquote citations mblang = do
@@ -507,12 +503,8 @@ blockquote citations mblang = do
                   cs <- cites NormalCitation False
                   return $ para (cite cs mempty)
                 else return mempty
-  let lang = mblang >>= babelLangToBCP47
-  let langdiv = case lang of
-                      Nothing -> id
-                      Just l  -> divWith ("",[],[("lang", renderLang l)])
   bs <- grouped block
-  return $ blockQuote . langdiv $ (bs <> citePar)
+  return $ blockQuote $ (bs <> citePar)
 
 doAcronym :: PandocMonad m => Text -> LP m Inlines
 doAcronym form = do
@@ -859,47 +851,12 @@ inlineEnvironment = try $ do
 
 inlineEnvironments :: PandocMonad m => M.Map Text (LP m Inlines)
 inlineEnvironments = M.fromList [
-    ("displaymath", mathEnvWith id Nothing "displaymath")
-  , ("math", math <$> mathEnv "math")
-  , ("equation", mathEnvWith id Nothing "equation")
-  , ("equation*", mathEnvWith id Nothing "equation*")
-  , ("gather", mathEnvWith id (Just "gathered") "gather")
-  , ("gather*", mathEnvWith id (Just "gathered") "gather*")
-  , ("multline", mathEnvWith id (Just "gathered") "multline")
-  , ("multline*", mathEnvWith id (Just "gathered") "multline*")
-  , ("eqnarray", mathEnvWith id (Just "aligned") "eqnarray")
-  , ("eqnarray*", mathEnvWith id (Just "aligned") "eqnarray*")
-  , ("align", mathEnvWith id (Just "aligned") "align")
-  , ("align*", mathEnvWith id (Just "aligned") "align*")
-  , ("alignat", mathEnvWith id (Just "aligned") "alignat")
-  , ("alignat*", mathEnvWith id (Just "aligned") "alignat*")
-  , ("dmath", mathEnvWith id Nothing "dmath")
-  , ("dmath*", mathEnvWith id Nothing "dmath*")
-  , ("dgroup", mathEnvWith id (Just "aligned") "dgroup")
-  , ("dgroup*", mathEnvWith id (Just "aligned") "dgroup*")
-  , ("darray", mathEnvWith id (Just "aligned") "darray")
-  , ("darray*", mathEnvWith id (Just "aligned") "darray*")
   ]
 
 inlineCommands :: PandocMonad m => M.Map Text (LP m Inlines)
-inlineCommands = M.union inlineLanguageCommands $ M.fromList
+inlineCommands = M.fromList
   [ ("emph", extractSpaces emph <$> tok)
-  , ("textit", extractSpaces emph <$> tok)
-  , ("textsl", extractSpaces emph <$> tok)
-  , ("textsc", extractSpaces smallcaps <$> tok)
-  , ("textsf", extractSpaces (spanWith ("",["sans-serif"],[])) <$> tok)
-  , ("textmd", extractSpaces (spanWith ("",["medium"],[])) <$> tok)
-  , ("textrm", extractSpaces (spanWith ("",["roman"],[])) <$> tok)
-  , ("textup", extractSpaces (spanWith ("",["upright"],[])) <$> tok)
-  , ("texttt", ttfamily)
-  , ("sout", extractSpaces strikeout <$> tok)
-  , ("alert", skipopts >> spanWith ("",["alert"],[]) <$> tok) -- beamer
-  , ("lq", return (str "‘"))
-  , ("rq", return (str "’"))
-  , ("textquoteleft", return (str "‘"))
-  , ("textquoteright", return (str "’"))
-  , ("textquotedblleft", return (str "“"))
-  , ("textquotedblright", return (str "”"))
+  , ("strike", extractSpaces emph <$> tok)
   , ("textsuperscript", extractSpaces superscript <$> tok)
   , ("textsubscript", extractSpaces subscript <$> tok)
   , ("strong", extractSpaces strong <$> tok)
@@ -911,11 +868,6 @@ inlineCommands = M.union inlineLanguageCommands $ M.fromList
   , ("break", linebreak <$ (optional (bracketed inline) *> spaces1))
   , ("footnote", note <$> grouped block)
   , ("texttt", (code . stringify . toList) <$> tok)
-  , ("url", ((unescapeURL . T.unpack . untokenize) <$> braced) >>= \url ->
-                  pure (link url "" (str url)))
-  , ("href", (unescapeURL . toksToString <$>
-                 braced <* optional sp) >>= \url ->
-                   tok >>= \lab -> pure (link url "" lab))
   ]
 
 ifdim :: PandocMonad m => LP m Inlines
@@ -933,25 +885,6 @@ alterStr :: (Text -> Text) -> Inline -> Inline
 alterStr f (Str xs) = Str (f xs)
 alterStr _ x = x
 
-foreignlanguage :: PandocMonad m => LP m Inlines
-foreignlanguage = do
-  babelLang <- untokenize <$> braced
-  case babelLangToBCP47 babelLang of
-       Just lang -> spanWith ("", [], [("lang",  renderLang lang)]) <$> tok
-       _ -> tok
-
-inlineLanguageCommands :: PandocMonad m => M.Map Text (LP m Inlines)
-inlineLanguageCommands = M.fromList $ mk <$> M.toList polyglossiaLangToBCP47
-  where
-    mk (polyglossia, bcp47Func) =
-      ("text" <> polyglossia, inlineLanguage bcp47Func)
-
-inlineLanguage :: PandocMonad m => (Text -> Lang) -> LP m Inlines
-inlineLanguage bcp47Func = do
-  o <- option "" $ T.filter (\c -> c /= '[' && c /= ']')
-                <$> rawopt
-  let lang = renderLang $ bcp47Func o
-  extractSpaces (spanWith ("", [], [("lang", lang)])) <$> tok
 
 hyperlink :: PandocMonad m => LP m Inlines
 hyperlink = try $ do
@@ -1193,15 +1126,6 @@ end_ t = try (do
   txt <- untokenize <$> braced
   guard $ t == txt) <?> ("\\end{" ++ T.unpack t ++ "}")
 
-preamble :: PandocMonad m => LP m Blocks
-preamble = mconcat <$> many preambleBlock
-  where preambleBlock =  (mempty <$ spaces1)
-                     <|> macroDef (rawBlock "sile")
-                     <|> (mempty <$ blockCommand)
-                     <|> (mempty <$ braced)
-                     <|> (do notFollowedBy (begin_ "document")
-                             anyTok
-                             return mempty)
 
 paragraph :: PandocMonad m => LP m Blocks
 paragraph = do
