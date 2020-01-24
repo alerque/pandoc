@@ -504,7 +504,7 @@ blockToMarkdown' opts b@(RawBlock f str) = do
       | f `elem` ["sile", "sil"] ->
             case () of
               _ | isEnabled Ext_raw_sile opts -> return $
-                    text str <> text "\n"
+                    literal str <> literal "\n"
                 | isEnabled Ext_raw_attribute opts -> rawAttribBlock
                 | otherwise -> renderEmpty
       | otherwise -> renderEmpty
@@ -1248,7 +1248,7 @@ inlineToMarkdown opts il@(RawInline f str) = do
                 | otherwise -> renderEmpty
       | f `elem` ["sile", "sil"] ->
             case () of
-              _ | isEnabled Ext_raw_sile opts -> return $ text str
+              _ | isEnabled Ext_raw_sile opts -> return $ literal str
                 | isEnabled Ext_raw_attribute opts -> rawAttribInline
                 | otherwise -> renderEmpty
       | otherwise -> renderEmpty
