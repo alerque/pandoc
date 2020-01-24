@@ -221,20 +221,20 @@ blockToSile Null = return empty
 blockToSile (Div (id,classes,kvs) bs) = do
   ref <- toLabel id
   lang <- toLang $ lookup "lang" kvs
-  let linkAnchor = if null id
+  let linkAnchor = if T.null id
                       then empty
                       else "\\pdf:link" <> braces (literal ref)
   let classes' = [ val | (val) <- classes ]
   let classes'' = T.intercalate "," classes'
   let params = (if id == ""
                   then []
-                  else [ "id=" ++ ref ]) ++
-               (if null classes'
+                  else [ "id=" <> ref ]) ++
+               (if T.null classes''
                   then []
-                  else [ "classes=\"" ++ classes'' ++ "\"" ] ) ++
-                (if null kvs
+                  else [ "classes=\"" <> classes'' <> "\"" ] ) ++
+                (if T.null kvs
                   then []
-                  else [ key ++ "=" ++ attr | (key, attr) <- kvs ])
+                  else [ key ++ "=" <> attr | (key, attr) <- kvs ])
   contents <- blockListToSile bs
   return $ inBlockCmd "Div" params (linkAnchor $$ contents)
 blockToSile (Plain lst) =
@@ -539,6 +539,7 @@ inlineToSile (Span (id',classes,kvs) ils) = do
               else if null params
                       then foldr inCmd contents cmds
                       else inArgCmd "Span" params $ foldr inCmd contents cmds
+
 inlineToSile (Emph lst) =
   inCmd "Emph" <$> inlineListToSile lst
 inlineToSile (Strong lst) =
