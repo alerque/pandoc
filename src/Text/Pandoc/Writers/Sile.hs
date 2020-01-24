@@ -5,7 +5,7 @@
 {-# LANGUAGE ViewPatterns        #-}
 {- |
    Module      : Text.Pandoc.Writers.Sile
-   Copyright   : Copyright (C) 2015-2019 Caleb Maclennan
+   Copyright   : Copyright (C) 2015-2020 Caleb Maclennan
    License     : GNU GPL, version 2 or above
 
    Maintainer  : Caleb Maclennan <caleb@alerque.com>
@@ -96,7 +96,6 @@ pandocToSile options (Pandoc meta blocks) = do
         | Just ('#', xs) <- T.uncons s = [xs]
       isInternalLink _                     = []
   modify $ \s -> s{ stInternalLinks = query isInternalLink blocks' }
-  -- set stBook depending on documentclass
   let colwidth = if writerWrapText options == WrapAuto
                     then Just $ writerColumns options
                     else Nothing
@@ -546,12 +545,18 @@ inlineToSile (Span (id',classes,kvs) ils) = do
               else if null params
                       then foldr inCmd contents commands
                       else inArgCmd "Span" params $ foldr inCmd contents commands
-inlineToSile (Emph lst) = inCmd "Emph" <$> inlineListToSile lst
-inlineToSile (Strong lst) = inCmd "Strong" <$> inlineListToSile lst
-inlineToSile (Strikeout lst) = inCmd "Strikeout" <$> inlineListToSile lst
-inlineToSile (Superscript lst) = inCmd "Superscript" <$> inlineListToSile lst
-inlineToSile (Subscript lst) = inCmd "Subscript" <$> inlineListToSile lst
-inlineToSile (SmallCaps lst) = inCmd "SmallCaps" <$> inlineListToSile lst
+inlineToSile (Emph lst) =
+  inCmd "Emph" <$> inlineListToSile lst
+inlineToSile (Strong lst) =
+  inCmd "Strong" <$> inlineListToSile lst
+inlineToSile (Strikeout lst) =
+  inCmd "Strikeout" <$> inlineListToSile lst
+inlineToSile (Superscript lst) =
+  inCmd "Superscript" <$> inlineListToSile lst
+inlineToSile (Subscript lst) =
+  inCmd "textsubscript" <$> inlineListToSile lst
+inlineToSile (SmallCaps lst) =
+  inCmd "SmallCaps" <$> inlineListToSile lst
 inlineToSile (Cite cits lst) = do
   st <- get
   let opts = stOptions st
@@ -560,7 +565,7 @@ inlineToSile (Cite cits lst) = do
      _        -> inlineListToSile lst
 
 inlineToSile (Code (_,_,_) str) =
-  return $ "\\code{" <> text str <> "}"
+  return $ "\\code{" <> literal str <> "}"
 inlineToSile (Quoted SingleQuote lst) = do
   opts <- gets stOptions
   contents <- inlineListToSile lst
@@ -573,15 +578,17 @@ inlineToSile (Quoted DoubleQuote lst) = do
   return $ if isEnabled Ext_smart opts
               then "“" <> contents <> "”"
               else "\"" <> contents <> "\""
-inlineToSile (Str str) = liftM text $ stringToSile TextString str
+inlineToSile (Str str) = do
+  setEmptyLine False
+  liftM literal $ stringToSile TextString str
 inlineToSile (Math InlineMath str) =
-  return $ "\\(" <> text str <> "\\)"
+  return $ "\\(" <> literal str <> "\\)"
 inlineToSile (Math DisplayMath str) = do
   setEmptyLine False
-  return $ "\\[" <> text str <> "\\]"
+  return $ "\\[" <> literal str <> "\\]"
 inlineToSile  il@(RawInline f str) = do
   setEmptyLine False
-  return $ text str
+  return $ literal str
 inlineToSile LineBreak = return $ "\\hfill\\break" <> cr
 inlineToSile SoftBreak = do
   wrapText <- gets (writerWrapText . stOptions)
