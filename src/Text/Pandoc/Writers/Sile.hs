@@ -194,23 +194,22 @@ toLabel z = go `fmap` stringToSile URLString z
        | x `elemText` "_-+=:;." -> T.singleton x
        | otherwise -> T.pack $ "ux" <> printf "%x" (ord x)
 
-toParams :: PandocMonad m => Text -> [Text] -> [(Text, Text)] -> LW m [Text]
-toParams id classes kvs = do
+toOptions :: PandocMonad m => Text -> [Text] -> [(Text, Text)] -> LW m [Text]
+toOptions id classes kvs = do
   ref <- toLabel id
   -- -- lang <- toLang $ lookup "lang" kvs
-  let classes' = filter (`notElem` [ "csl-no-emph", "csl-no-strong", "csl-no-smallcaps"]) classes
-  let classes'' = [ val | (val) <- classes' ]
-  let classes''' = T.intercalate "," classes''
-  let params = (if id == ""
+  let classes' = [ val | (val) <- classes ]
+  let classes'' = T.intercalate "," classes'
+  let options = (if T.null id
                   then []
                   else [ "id=" <> ref ]) <>
                 (if null classes'
                     then []
-                    else [ "classes=\"" <> classes''' <> "\"" ] ) <>
+                    else [ "classes=\"" <> classes'' <> "\"" ] ) <>
                 (if null kvs
                     then []
                     else [ key <> "=" <> attr | (key, attr) <- kvs ])
-  return params
+  return options
 
 -- | Puts contents into Sile command.
 inCmd :: Text -> Doc Text -> Doc Text
@@ -236,25 +235,10 @@ blockToSile :: PandocMonad m
              => Block     -- ^ Block to convert
              -> LW m (Doc Text)
 blockToSile Null = return empty
--- blockToSile (Div (id,classes,kvs) bs) = do
---   ref <- toLabel id
---   lang <- toLang $ lookup "lang" kvs
---   let linkAnchor = if T.null id
---                       then empty
---                       else "\\pdf:link" <> braces (literal ref)
---   let classes' = [ val | (val) <- classes ]
---   let classes'' = T.intercalate "," classes'
---   let params = (if id == ""
---                   then []
---                   else [ "id=" <> ref ]) ++
---                (if T.null classes''
---                   then []
---                   else [ "classes=\"" <> classes'' <> "\"" ] ) ++
---                 (if T.null kvs
---                   then []
---                   else [ key ++ "=" <> attr | (key, attr) <- kvs ])
---   contents <- blockListToSile bs
---   return $ inBlockCmd "Div" params (linkAnchor $$ contents)
+blockToSile (Div (id,classes,kvs) bs) = do
+  options <- toOptions id classes kvs
+  contents <- blockListToSile bs
+  return $ inBlockCmd "Div" options contents
 blockToSile (Plain lst) =
   inlineListToSile lst
 blockToSile (Para [Str ".",Space,Str ".",Space,Str "."]) = do
@@ -264,9 +248,9 @@ blockToSile (Para lst) =
 blockToSile (LineBlock lns) =
   blockToSile $ linesToPara lns
 blockToSile (BlockQuote lst) = do
-  let params = []
+  let options = []
   contents <- blockListToSile lst
-  return $ inBlockCmd "BlockQuote" params contents
+  return $ inBlockCmd "BlockQuote" options contents
 -- blockToSile (CodeBlock (identifier,classes,keyvalAttr) str) = do
 --   opts <- gets stOptions
 --   lab <- labelFor identifier
@@ -532,10 +516,10 @@ inlineToSile (Span (id,classes,kvs) ils) = do
   let classToCommand = [ "csl-no-emph", "csl-no-strong", "csl-no-smallcaps" ]
   let cmds = filter (`elem` classToCommand) classes
   let classes' = filter (`notElem` classToCommand) classes
-  params <- toParams id classes' kvs
+  options <- toOptions id classes' kvs
   return $ if null cmds
-            then inArgCmd "Span" params contents
-            else inArgCmd "Span" params $ foldr inCmd contents cmds
+            then inArgCmd "Span" options contents
+            else inArgCmd "Span" options $ foldr inCmd contents cmds
 
 inlineToSile (Emph lst) =
   inCmd "Emph" <$> inlineListToSile lst
