@@ -41,7 +41,6 @@ data WriterState =
               , stOLLevel       :: Int           -- level of ordered list nesting
               , stOptions       :: WriterOptions -- writer options, so they don't have to be parameter
               , stBook          :: Bool          -- true if document uses book class
-              , stInternalLinks :: [Text]      -- list of internal link targets
               , stEmptyLine     :: Bool          -- true if no content on line
               }
 
@@ -54,7 +53,6 @@ startingState options = WriterState {
                                 TopLevelPart    -> True
                                 TopLevelChapter -> True
                                 _               -> False
-                , stInternalLinks = []
                 , stEmptyLine = True }
 
 -- | Convert Pandoc to Sile.
