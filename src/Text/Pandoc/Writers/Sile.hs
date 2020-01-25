@@ -541,14 +541,6 @@ inlineToSile (Quoted DoubleQuote lst) = do
 inlineToSile (Str str) = do
   setEmptyLine False
   liftM literal $ stringToSile TextString str
-inlineToSile (Math InlineMath str) =
-  return $ "\\(" <> literal str <> "\\)"
-inlineToSile (Math DisplayMath str) = do
-  setEmptyLine False
-  return $ "\\[" <> literal str <> "\\]"
-inlineToSile  il@(RawInline f str) = do
-  setEmptyLine False
-  return $ literal str
 inlineToSile LineBreak = return $ "\\hfill\\break" <> cr
 inlineToSile SoftBreak = do
   wrapText <- gets (writerWrapText . stOptions)
