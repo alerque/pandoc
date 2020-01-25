@@ -426,23 +426,14 @@ defListItemToSile (term, defs) = do
      _                          ->
        "\\listitem" <> braces term' $$ def'
 
--- | Craft the section header, inserting the secton reference, if supplied.
 sectionHeader :: PandocMonad m
               => [Text]  -- classes
               -> Text
               -> Int
               -> [Inline]
               -> LW m (Doc Text)
-sectionHeader classes ident level lst = do
-  let unnumbered = "unnumbered" `elem` classes
-  let unlisted = "unlisted" `elem` classes
-  txt <- inlineListToSile lst
-  let removeInvalidInline (Note _)             = []
-      removeInvalidInline (Span (id', _, _) _) | not (T.null id') = []
-      removeInvalidInline Image{}            = []
-      removeInvalidInline x                    = [x]
-  let lstNoNotes = foldr (mappend . (\x -> walkM removeInvalidInline x)) mempty lst
-  book <- gets stBook
+sectionHeader classes id' level lst = do
+  content <- inlineListToSile lst
   opts <- gets stOptions
   let topLevelDivision = if writerTopLevelDivision opts == TopLevelDefault
                          then TopLevelChapter
@@ -452,26 +443,15 @@ sectionHeader classes ident level lst = do
                       TopLevelChapter -> level - 1
                       TopLevelSection -> level
                       TopLevelDefault -> level
+  let level'' = T.pack $ show level'
   let sectionType = case level' of
                           -1 -> "part"
                           0  -> "chapter"
                           1  -> "section"
                           2  -> "subsection"
-                          3  -> "subsubsection"
-                          4  -> "paragraph"
-                          5  -> "subparagraph"
-                          _  -> ""
-  lab <- labelFor ident
-  return $ if level' > 5
-              then txt
-              else text ('\\':sectionType) <> braces txt
-
-
-labelFor :: PandocMonad m => Text -> LW m (Doc Text)
-labelFor ""    = return empty
-labelFor ident = do
-  ref <- literal `fmap` toLabel ident
-  return $ text "\\label" <> braces ref
+                          _  -> "sectionHeader"
+  options <- toOptions id' classes [ ("level", level'') ]
+  return $ inArgCmd sectionType options content
 
 -- | Convert list of inline elements to Sile.
 inlineListToSile :: PandocMonad m
