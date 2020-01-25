@@ -40,7 +40,7 @@ data WriterState =
                 stInHeading     :: Bool          -- true if in a section heading
               , stOLLevel       :: Int           -- level of ordered list nesting
               , stOptions       :: WriterOptions -- writer options, so they don't have to be parameter
-              , stBook          :: Bool          -- true if document uses book class
+              , stHasChapters   :: Bool          -- true if document has chapters
               , stEmptyLine     :: Bool          -- true if no content on line
               }
 
@@ -49,7 +49,7 @@ startingState options = WriterState {
                   stInHeading = False
                 , stOLLevel = 1
                 , stOptions = options
-                , stBook = case writerTopLevelDivision options of
+                , stHasChapters = case writerTopLevelDivision options of
                                 TopLevelPart    -> True
                                 TopLevelChapter -> True
                                 _               -> False
@@ -74,6 +74,7 @@ pandocToSile options (Pandoc meta blocks) = do
               blockListToSile
               (fmap chomp . inlineListToSile)
               meta
+  let chaptersClasses = ["book","jbook","markdown","bible","triglot","docbook"]
   let documentClass =
         case lookupContext "documentclass" (writerVariables options) `mplus`
               (stringify <$> lookupMeta "documentclass" meta) of
@@ -82,6 +83,8 @@ pandocToSile options (Pandoc meta blocks) = do
                                  TopLevelPart    -> "book"
                                  TopLevelChapter -> "book"
                                  _               -> "plain"
+  when (documentClass `elem` chaptersClasses) $
+     modify $ \s -> s{ stHasChapters = True }
   main <- blockListToSile blocks'
   st <- get
   titleMeta <- stringToSile TextString $ stringify $ docTitle meta
@@ -90,7 +93,7 @@ pandocToSile options (Pandoc meta blocks) = do
   let context  =  defField "toc" (writerTableOfContents options) $
                   defField "toc-depth" (tshow
                                         (writerTOCDepth options -
-                                              if stBook st
+                                              if stHasChapters st
                                                  then 1
                                                  else 0)) $
                   defField "body" main $
@@ -99,6 +102,7 @@ pandocToSile options (Pandoc meta blocks) = do
                         (T.intercalate "; " authorsMeta) $
                   defField "documentclass" documentClass $
                   defField "numbersections" (writerNumberSections options) $
+                  defField "has-chapters" (stHasChapters st) $
                   (case T.uncons . render Nothing <$>
                         getField "papersize" metadata of
                         -- uppercase a4, a5, etc.
@@ -279,8 +283,9 @@ sectionHeader :: PandocMonad m
               -> LW m (Doc Text)
 sectionHeader classes id' level lst = do
   content <- inlineListToSile lst
+  book <- gets stHasChapters
   opts <- gets stOptions
-  let topLevelDivision = if writerTopLevelDivision opts == TopLevelDefault
+  let topLevelDivision = if book && writerTopLevelDivision opts == TopLevelDefault
                          then TopLevelChapter
                          else writerTopLevelDivision opts
   let level' = case topLevelDivision of
