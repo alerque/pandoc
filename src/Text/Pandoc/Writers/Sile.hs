@@ -167,17 +167,18 @@ toOptions ident classes kvs = do
   return options
 
 inCmd :: Text -> Doc Text -> Doc Text
-inCmd cmd content = char '\\' <> literal cmd <> braces content
+inCmd cmd content = do
+  char '\\' <> literal cmd <> braces content
 
-inArgCmd :: Text -> [Text] -> Doc Text -> Doc Text
-inArgCmd cmd args content = do
+inOptCmd :: Text -> [Text] -> Doc Text -> Doc Text
+inOptCmd cmd args content = do
   let args' = if null args
                  then ""
                  else brackets $ hcat (intersperse "," (map literal args))
   char '\\' <> literal cmd <> args' <> braces content
 
-inBlockCmd :: Text -> [Text] -> Doc Text -> Doc Text
-inBlockCmd cmd args content = do
+inOptEnv :: Text -> [Text] -> Doc Text -> Doc Text
+inOptEnv cmd args content = do
   let args' = if null args
                  then ""
                  else brackets $ hcat (intersperse "," (map literal args))
@@ -192,7 +193,7 @@ blockToSile Null = return empty
 blockToSile (Div (ident,classes,kvs) bs) = do
   options <- toOptions ident classes kvs
   content <- blockListToSile bs
-  return $ inBlockCmd "Div" options content
+  return $ inOptEnv "Div" options content
 blockToSile (Plain lst) =
   inlineListToSile lst
 blockToSile (Para [Str ".",Space,Str ".",Space,Str "."]) = do
@@ -204,11 +205,11 @@ blockToSile (LineBlock lns) =
 blockToSile (BlockQuote lst) = do
   let options = []
   content <- blockListToSile lst
-  return $ inBlockCmd "BlockQuote" options content
+  return $ inOptEnv "BlockQuote" options content
 blockToSile (CodeBlock (ident,classes,kvs) str) = do
   options <- toOptions ident classes kvs
   content <- liftM literal $ stringToSile CodeString str
-  return $ inBlockCmd "verbatim" options content
+  return $ inOptEnv "verbatim" options content
 blockToSile b@(RawBlock f x)
   | f == Format "sile" || f == Format "sil"
                         = return $ literal x
@@ -301,7 +302,7 @@ sectionHeader classes id' level lst = do
                           2  -> "subsection"
                           _  -> "sectionHeader"
   options <- toOptions id' classes [ ("level", level'') ]
-  return $ inArgCmd sectionType options content
+  return $ inOptCmd sectionType options content
 
 -- | Convert list of inline elements to Sile.
 inlineListToSile :: PandocMonad m
@@ -332,8 +333,8 @@ inlineToSile (Span (id',classes,kvs) ils) = do
   let classes' = filter (`notElem` classToCommand) classes
   options <- toOptions id' classes' kvs
   return $ if null cmds
-            then inArgCmd "Span" options content
-            else inArgCmd "Span" options $ foldr inCmd content cmds
+            then inOptCmd "Span" options content
+            else inOptCmd "Span" options $ foldr inCmd content cmds
 
 inlineToSile (Emph lst) =
   inCmd "Emph" <$> inlineListToSile lst
