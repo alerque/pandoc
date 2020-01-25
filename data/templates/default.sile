@@ -1,6 +1,6 @@
 \begin[$if(papersize)$papersize=$papersize$,$endif$class=$documentclass$$if(classoptions)$,$classoptions$$endif$]{document}
-$if(lang)$
 \script[src=packages/pandoc]
+$if(lang)$
 \language[main=$lang$]
 \font[language=$lang$]
 $endif$
@@ -13,8 +13,6 @@ $endif$
 $if(fontsize)$
 \font[size=$fontsize$]
 $endif$
-\define[command=listarea]{\set[parameter=document.rskip,value=10pt]\set[parameter=document.lskip,value=20pt]\process\set[parameter=document.lskip]\set[parameter=document.rskip]\noindent}%
-\define[command=listitem]{\smallskip{}\glue[width=-1em]• \glue[width=0.3em]\process\smallskip}%
 \begin{script}
 $if(links-as-notes)$
 SILE.registerCommand("href", function(options, content)
@@ -28,7 +26,7 @@ end)
 $endif$
 \end{script}
 $for(include)$
-\include[src=$include$]
+\script[src=$include$]
 $endfor$
 $for(script)$
 \script[src=$script$]
@@ -61,7 +59,6 @@ $body$
 $for(include-after)$
 $include-after$
 % TODO: bibtex
-\include[src=$include-after$]
-
+\script[src=$include-after$]
 $endfor$
 \end{document}
