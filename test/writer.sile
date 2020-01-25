@@ -6,7 +6,7 @@ Gruber’s markdown test suite.
 \section[id=headers,level=1]{Headers}
 
 \subsection[id=level-2-with-an-embedded-link,level=2]{Level 2 with an
-\href{/url}{embedded link}}
+\href[src=/url]{embedded link}}
 
 \sectionHeader[id=level-3-with-emphasis,level=3]{Level 3 with
 \Emph{emphasis}}
@@ -498,7 +498,7 @@ This is \Emph{emphasized}, and so \Emph{is this}.
 
 This is \Strong{strong}, and so \Strong{is this}.
 
-An \Emph{\href{/url}{emphasized link}}.
+An \Emph{\href[src=/url]{emphasized link}}.
 
 \Strong{\Emph{This is strong and em.}}
 
@@ -535,7 +535,7 @@ ellipses, dashes}
 ‘He said, “I want to go.”’ Were you alive in the 70’s?
 
 Here is some quoted ‘\code{code}’ and a
-“\href{http://example.com/?foo=1&bar=2}{quoted link}”.
+“\href[src=http://example.com/?foo=1&bar=2]{quoted link}”.
 
 Some dashes: one—two — three—four — five.
 
@@ -634,37 +634,37 @@ Minus: -
 
 \subsection[id=explicit,level=2]{Explicit}
 
-Just a \href{/url/}{URL}.
+Just a \href[src=/url/]{URL}.
 
-\href{/url/}{URL and title}.
+\href[src=/url/]{URL and title}.
 
-\href{/url/}{URL and title}.
+\href[src=/url/]{URL and title}.
 
-\href{/url/}{URL and title}.
+\href[src=/url/]{URL and title}.
 
-\href{/url/}{URL and title}
+\href[src=/url/]{URL and title}
 
-\href{/url/}{URL and title}
+\href[src=/url/]{URL and title}
 
-\href{/url/with_underscore}{with_underscore}
+\href[src=/url/with_underscore]{with_underscore}
 
-\href{mailto:nobody@nowhere.net}{Email link}
+\href[src=mailto:nobody@nowhere.net]{Email link}
 
-\href{}{Empty}.
+\href[src=]{Empty}.
 
 \subsection[id=reference,level=2]{Reference}
 
-Foo \href{/url/}{bar}.
+Foo \href[src=/url/]{bar}.
 
-With \href{/url/}{embedded [brackets]}.
+With \href[src=/url/]{embedded [brackets]}.
 
-\href{/url/}{b} by itself should be a link.
+\href[src=/url/]{b} by itself should be a link.
 
-Indented \href{/url}{once}.
+Indented \href[src=/url]{once}.
 
-Indented \href{/url}{twice}.
+Indented \href[src=/url]{twice}.
 
-Indented \href{/url}{thrice}.
+Indented \href[src=/url]{thrice}.
 
 This should [not][] be a link.
 
@@ -672,37 +672,39 @@ This should [not][] be a link.
 [not]: /url
 \end{verbatim}
 
-Foo \href{/url/}{bar}.
+Foo \href[src=/url/]{bar}.
 
-Foo \href{/url/}{biz}.
+Foo \href[src=/url/]{biz}.
 
 \subsection[id=with-ampersands,level=2]{With ampersands}
 
-Here’s a \href{http://example.com/?foo=1&bar=2}{link with an ampersand
-in the URL}.
+Here’s a \href[src=http://example.com/?foo=1&bar=2]{link with an
+ampersand in the URL}.
 
 Here’s a link with an amersand in the link text:
-\href{http://att.com/}{AT&T}.
+\href[src=http://att.com/]{AT&T}.
 
-Here’s an \href{/script?foo=1&bar=2}{inline link}.
+Here’s an \href[src=/script?foo=1&bar=2]{inline link}.
 
-Here’s an \href{/script?foo=1&bar=2}{inline link in pointy braces}.
+Here’s an \href[src=/script?foo=1&bar=2]{inline link in pointy braces}.
 
 \subsection[id=autolinks,level=2]{Autolinks}
 
-With an ampersand: \url{http://example.com/?foo=1&bar=2}
+With an ampersand:
+\href[classes="uri",src=http://example.com/?foo=1&bar=2]{http://example.com/?foo=1&bar=2}
 
 \begin{listarea}
 \listitem{In a list?}
-\listitem{\url{http://example.com/}}
+\listitem{\href[classes="uri",src=http://example.com/]{http://example.com/}}
 \listitem{It should.}
 \end{listarea}
 
 An e-mail address:
-\href{mailto:nobody@nowhere.net}{\url{nobody@nowhere.net}}
+\href[classes="email",src=mailto:nobody@nowhere.net]{nobody@nowhere.net}
 
 \begin{quote}
-Blockquoted: \url{http://example.com/}
+Blockquoted:
+\href[classes="uri",src=http://example.com/]{http://example.com/}
 \end{quote}
 
 Auto-links should not occur here: \code{<http://example.com/>}
@@ -741,7 +743,7 @@ Here is a footnote reference,\footnote{Here is the footnote. It can go
   just indent the first line of each block.} This should \Emph{not} be a
 footnote reference, because it contains a space.[^my note] Here is an
 inline note.\footnote{This is \Emph{easier} to type. Inline notes may
-  contain \href{http://google.com}{links} and \code{]} verbatim
+  contain \href[src=http://google.com]{links} and \code{]} verbatim
   characters, as well as [bracketed text].}
 
 \begin{quote}
