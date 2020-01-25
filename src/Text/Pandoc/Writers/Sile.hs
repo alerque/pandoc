@@ -495,12 +495,12 @@ inlineListToSile lst = hcat <$>
 inlineToSile :: PandocMonad m
               => Inline    -- ^ Inline to convert
               -> LW m (Doc Text)
-inlineToSile (Span (id,classes,kvs) ils) = do
+inlineToSile (Span (id',classes,kvs) ils) = do
   contents <- inlineListToSile ils
   let classToCommand = [ "csl-no-emph", "csl-no-strong", "csl-no-smallcaps" ]
   let cmds = filter (`elem` classToCommand) classes
   let classes' = filter (`notElem` classToCommand) classes
-  options <- toOptions id classes' kvs
+  options <- toOptions id' classes' kvs
   return $ if null cmds
             then inArgCmd "Span" options contents
             else inArgCmd "Span" options $ foldr inCmd contents cmds
