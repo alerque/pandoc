@@ -198,11 +198,11 @@ toLabel z = go `fmap` stringToSile URLString z
 inCmd :: Text -> Doc Text -> Doc Text
 inCmd cmd contents = char '\\' <> literal cmd <> braces contents
 
-inArgCmd :: Text -> [String] -> Doc Text -> Doc Text
+inArgCmd :: Text -> [Text] -> Doc Text -> Doc Text
 inArgCmd cmd args contents = do
   let args' = if null args
                  then ""
-                 else brackets $ hcat (intersperse "," (map text args))
+                 else brackets $ hcat (intersperse "," (map literal args))
   char '\\' <> literal cmd <> args' <> braces contents
 
 inBlockCmd :: Text -> [String] -> Doc Text -> Doc Text
@@ -535,12 +535,10 @@ inlineToSile (Span (id',classes,kvs) ils) = do
   return $ if null cmds
               then if null params
                       then braces contents
-                      -- else inArgCmd "Span" params contents
-                      else ""
+                      else inArgCmd "Span" params contents
               else if null params
                       then foldr inCmd contents cmds
-                      -- else inArgCmd "Span" params $ foldr inCmd contents cmds
-                      else ""
+                      else inArgCmd "Span" params $ foldr inCmd contents cmds
 
 inlineToSile (Emph lst) =
   inCmd "Emph" <$> inlineListToSile lst
