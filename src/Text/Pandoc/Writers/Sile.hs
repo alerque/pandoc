@@ -18,27 +18,19 @@ module Text.Pandoc.Writers.Sile (
     writeSile
   ) where
 import Prelude
-import Control.Applicative ((<|>))
 import Control.Monad.State.Strict
-import Data.Monoid (Any(..))
-import Data.Char (isAlphaNum, isAscii, isDigit, isLetter, isSpace,
-                  isPunctuation, ord)
-import Data.List (foldl', intersperse, nubBy, (\\), uncons )
-import Data.Maybe (catMaybes, fromMaybe, isJust, mapMaybe, isNothing)
-import qualified Data.Map as M
+import Data.Char (isAscii, isDigit, isLetter, isPunctuation, ord)
+import Data.List (foldl', intersperse)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Network.URI (unEscapeString)
-import Text.DocTemplates (FromContext(lookupContext), renderTemplate,
-                          Val(..), Context(..))
-import Text.Pandoc.Class (PandocMonad, report, toLang)
+import Text.DocTemplates (FromContext(lookupContext), renderTemplate)
+import Text.Pandoc.Class (PandocMonad, report) -- , toLang)
 import Text.Pandoc.Definition
-import Text.Pandoc.ImageSize
 import Text.Pandoc.Logging
 import Text.Pandoc.Options
 import Text.DocLayout
 import Text.Pandoc.Shared
-import Text.DocTemplates (Val(..), Context(..))
 import Text.Pandoc.Walk
 import Text.Pandoc.Writers.Shared
 import Text.Printf (printf)
@@ -158,7 +150,7 @@ toLabel z = go `fmap` stringToSile URLString z
 toOptions :: PandocMonad m => Text -> [Text] -> [(Text, Text)] -> LW m [Text]
 toOptions ident classes kvs = do
   ref <- toLabel ident
-  -- -- lang <- toLang $ lookup "lang" kvs
+  -- lang <- toLang $ lookup "lang" kvs
   let classes' = [ val | (val) <- classes ]
   let classes'' = T.intercalate "," classes'
   let options = (if T.null ident
