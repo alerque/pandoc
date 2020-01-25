@@ -235,37 +235,9 @@ blockToSile (BlockQuote lst) = do
   content <- blockListToSile lst
   return $ inBlockCmd "BlockQuote" options content
 blockToSile (CodeBlock (ident,classes,kvs) str) = do
---   opts <- gets stOptions
---   lab <- labelFor identifier
   options <- toOptions ident classes kvs
-  -- content <- stringToSile CodeString str
---   let classes' = [ val | (val) <- classes ]
---   let classes'' = T.intercalate "," classes'
---   let params = (if identifier == ""
---                   then []
---                   else [ "id=" ++ lab ]) ++
---                (if null classes
---                   then []
---                   else [ "classes=\"" ++ classes'' ++ "\"" ] ) ++
---                 (if null kvs
---                   then []
---                   else [ key ++ "=" ++ attr | (key, attr) <- kvs ])
---       sileParams
---           | null params = empty
---           | otherwise = brackets $ hcat (intersperse "," (map literal params))
---   let linkAnchor = if null identifier
---                       then empty
---                       else "\\pdf:link" <> brackets (literal lab) <> braces (literal lab)
---   let rawCodeBlock = do
---         env <- return "verbatim"
---         return $ flush (linkAnchor $$ literal ("\\begin{" <> env <> "}") $$
---                  literal str $$ literal ("\\end{" <> env <> "}")) <> cr
-
---   case () of
---      _ | isEnabled Ext_literate_haskell opts && "haskell" `elem` classes &&
---          "literate" `elem` classes           -> lhsCodeBlock
---        | otherwise                           -> rawCodeBlock
-  return $ inArgCmd "verbatim" options str
+  content <- liftM literal $ stringToSile CodeString str
+  return $ inBlockCmd "verbatim" options content
 blockToSile b@(RawBlock f x)
   | f == Format "sile" || f == Format "sil"
                         = return $ literal x
