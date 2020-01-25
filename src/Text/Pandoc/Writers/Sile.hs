@@ -205,13 +205,13 @@ inArgCmd cmd args contents = do
                  else brackets $ hcat (intersperse "," (map literal args))
   char '\\' <> literal cmd <> args' <> braces contents
 
-inBlockCmd :: Text -> [String] -> Doc Text -> Doc Text
+inBlockCmd :: Text -> [Text] -> Doc Text -> Doc Text
 inBlockCmd cmd args contents = do
   let args' = if null args
                  then ""
-                 else brackets $ hcat (intersperse "," (map text args))
+                 else brackets $ hcat (intersperse "," (map literal args))
       cmd' = braces (literal cmd)
-  "\\begin" <> args' <> cmd' $$ contents $$ "\\end" <> cmd'
+  literal "\\begin" <> args' <> cmd' $$ contents $$ literal "\\end" <> cmd'
 
 -- | Convert Pandoc block element to Sile.
 blockToSile :: PandocMonad m
@@ -246,13 +246,9 @@ blockToSile (Para lst) =
 blockToSile (LineBlock lns) =
   blockToSile $ linesToPara lns
 blockToSile (BlockQuote lst) = do
-  case lst of
-       _ -> do
-         oldInQuote <- gets stInQuote
-         modify (\s -> s{stInQuote = True})
-         contents <- blockListToSile lst
-         modify (\s -> s{stInQuote = oldInQuote})
-         return $ "\\begin{quote}" $$ contents $$ "\\end{quote}"
+  let params = []
+  contents <- blockListToSile lst
+  return $ inBlockCmd "BlockQuote" params contents
 -- blockToSile (CodeBlock (identifier,classes,keyvalAttr) str) = do
 --   opts <- gets stOptions
 --   lab <- labelFor identifier
