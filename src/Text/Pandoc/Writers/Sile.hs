@@ -240,18 +240,18 @@ blockToSile (OrderedList (start, numstyle, _) lst) = do
                       Example      -> "arabic"
                       DefaultStyle -> "arabic"
   let start' = T.pack $ show start
-  options <- toOptions "" [] [("numberstyle", numstyle'),
-                              ("start", start')]
-  return $ inOptEnv "listarea" options content
+  let opts =  [("numberstyle", numstyle')] ++
+              [("start", start') | start > 1] ++
+              [("tight", "true") | isTightList lst]
+  options <- toOptions "" [] opts
+  return $ inOptEnv "OrderedList" options content
 blockToSile (DefinitionList []) = return empty
 blockToSile (DefinitionList lst) = do
   items <- mapM defListItemToSile lst
-  let spacing = if all isTightList (map snd lst)
-                   then text "tight=true,definition=true"
-                   else text "tight=false,definition=true"
-  return $ "\\begin" <> brackets spacing <> braces "listarea"
-         $$ vcat items
-         $$ "\\end" <> braces "listarea"
+  let content = vcat items
+  let opts = [("tight", "true") | all isTightList (map snd lst)]
+  options <- toOptions "" [] opts
+  return $ inOptEnv "DefinitionList" options content
 blockToSile HorizontalRule = return $
   "\\HorizontalRule"
 blockToSile (Header level (id',classes,_) lst) = do
