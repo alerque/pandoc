@@ -314,6 +314,8 @@ blockToSile (Header level (id',classes,_) lst) = do
   hdr <- sectionHeader classes id' level lst
   modify $ \s -> s{stInHeading = False}
   return hdr
+blockToSile (Table _ _ _ _ _) = do
+  return $ "\\script{SU.warn(\"Unimplemented, tables!\")}"
 
 blockListToSile :: PandocMonad m => [Block] -> LW m (Doc Text)
 blockListToSile lst =
