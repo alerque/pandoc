@@ -195,24 +195,23 @@ toOptions ident classes kvs = do
                     else [ key <> "=" <> attr | (key, attr) <- kvs ])
   return options
 
--- | Puts contents into Sile command.
 inCmd :: Text -> Doc Text -> Doc Text
-inCmd cmd contents = char '\\' <> literal cmd <> braces contents
+inCmd cmd content = char '\\' <> literal cmd <> braces content
 
 inArgCmd :: Text -> [Text] -> Doc Text -> Doc Text
-inArgCmd cmd args contents = do
+inArgCmd cmd args content = do
   let args' = if null args
                  then ""
                  else brackets $ hcat (intersperse "," (map literal args))
-  char '\\' <> literal cmd <> args' <> braces contents
+  char '\\' <> literal cmd <> args' <> braces content
 
 inBlockCmd :: Text -> [Text] -> Doc Text -> Doc Text
-inBlockCmd cmd args contents = do
+inBlockCmd cmd args content = do
   let args' = if null args
                  then ""
                  else brackets $ hcat (intersperse "," (map literal args))
       cmd' = braces (literal cmd)
-  literal "\\begin" <> args' <> cmd' $$ contents $$ literal "\\end" <> cmd'
+  literal "\\begin" <> args' <> cmd' $$ content $$ literal "\\end" <> cmd'
 
 -- | Convert Pandoc block element to Sile.
 blockToSile :: PandocMonad m
@@ -221,8 +220,8 @@ blockToSile :: PandocMonad m
 blockToSile Null = return empty
 blockToSile (Div (ident,classes,kvs) bs) = do
   options <- toOptions ident classes kvs
-  contents <- blockListToSile bs
-  return $ inBlockCmd "Div" options contents
+  content <- blockListToSile bs
+  return $ inBlockCmd "Div" options content
 blockToSile (Plain lst) =
   inlineListToSile lst
 blockToSile (Para [Str ".",Space,Str ".",Space,Str "."]) = do
@@ -233,12 +232,13 @@ blockToSile (LineBlock lns) =
   blockToSile $ linesToPara lns
 blockToSile (BlockQuote lst) = do
   let options = []
-  contents <- blockListToSile lst
-  return $ inBlockCmd "BlockQuote" options contents
--- blockToSile (CodeBlock (identifier,classes,keyvalAttr) str) = do
+  content <- blockListToSile lst
+  return $ inBlockCmd "BlockQuote" options content
+blockToSile (CodeBlock (ident,classes,kvs) str) = do
 --   opts <- gets stOptions
 --   lab <- labelFor identifier
---   str' <- stringToSile CodeString str
+  options <- toOptions ident classes kvs
+  -- content <- stringToSile CodeString str
 --   let classes' = [ val | (val) <- classes ]
 --   let classes'' = T.intercalate "," classes'
 --   let params = (if identifier == ""
@@ -247,19 +247,15 @@ blockToSile (BlockQuote lst) = do
 --                (if null classes
 --                   then []
 --                   else [ "classes=\"" ++ classes'' ++ "\"" ] ) ++
---                 (if null keyvalAttr
+--                 (if null kvs
 --                   then []
---                   else [ key ++ "=" ++ attr | (key, attr) <- keyvalAttr ])
+--                   else [ key ++ "=" ++ attr | (key, attr) <- kvs ])
 --       sileParams
 --           | null params = empty
 --           | otherwise = brackets $ hcat (intersperse "," (map literal params))
 --   let linkAnchor = if null identifier
 --                       then empty
 --                       else "\\pdf:link" <> brackets (literal lab) <> braces (literal lab)
---   let lhsCodeBlock = do
---         modify $ \s -> s{ stLHS = True }
---         return $ flush (linkAnchor $$ "\\begin{code}" $$ literal str $$
---                             "\\end{code}") $$ cr
 --   let rawCodeBlock = do
 --         env <- return "verbatim"
 --         return $ flush (linkAnchor $$ literal ("\\begin{" <> env <> "}") $$
@@ -269,6 +265,7 @@ blockToSile (BlockQuote lst) = do
 --      _ | isEnabled Ext_literate_haskell opts && "haskell" `elem` classes &&
 --          "literate" `elem` classes           -> lhsCodeBlock
 --        | otherwise                           -> rawCodeBlock
+  return $ inArgCmd "verbatim" options str
 blockToSile b@(RawBlock f x)
   | f == Format "sile" || f == Format "sil"
                         = return $ literal x
@@ -385,14 +382,14 @@ inlineToSile :: PandocMonad m
               => Inline    -- ^ Inline to convert
               -> LW m (Doc Text)
 inlineToSile (Span (id',classes,kvs) ils) = do
-  contents <- inlineListToSile ils
+  content <- inlineListToSile ils
   let classToCommand = [ "csl-no-emph", "csl-no-strong", "csl-no-smallcaps" ]
   let cmds = filter (`elem` classToCommand) classes
   let classes' = filter (`notElem` classToCommand) classes
   options <- toOptions id' classes' kvs
   return $ if null cmds
-            then inArgCmd "Span" options contents
-            else inArgCmd "Span" options $ foldr inCmd contents cmds
+            then inArgCmd "Span" options content
+            else inArgCmd "Span" options $ foldr inCmd content cmds
 
 inlineToSile (Emph lst) =
   inCmd "Emph" <$> inlineListToSile lst
@@ -417,16 +414,16 @@ inlineToSile (Code (_,_,_) str) =
   return $ "\\code{" <> literal str <> "}"
 inlineToSile (Quoted SingleQuote lst) = do
   opts <- gets stOptions
-  contents <- inlineListToSile lst
+  content <- inlineListToSile lst
   return $ if isEnabled Ext_smart opts
-              then "‘" <> contents <> "’"
-              else "'" <> contents <> "'"
+              then "‘" <> content <> "’"
+              else "'" <> content <> "'"
 inlineToSile (Quoted DoubleQuote lst) = do
   opts <- gets stOptions
-  contents <- inlineListToSile lst
+  content <- inlineListToSile lst
   return $ if isEnabled Ext_smart opts
-              then "“" <> contents <> "”"
-              else "\"" <> contents <> "\""
+              then "“" <> content <> "”"
+              else "\"" <> content <> "\""
 inlineToSile (Str str) = do
   setEmptyLine False
   liftM literal $ stringToSile TextString str
@@ -446,9 +443,9 @@ inlineToSile Space = return space
 inlineToSile (Link _ txt (src,_))
   | Just ('#', ident) <- T.uncons src
   = do
-      contents <- inlineListToSile txt
+      content <- inlineListToSile txt
       lab <- toLabel ident
-      return $ text "\\pdf:link" <> brackets ("dest=" <> literal lab) <> braces contents
+      return $ text "\\pdf:link" <> brackets ("dest=" <> literal lab) <> braces content
   | otherwise =
   case txt of
         [Str x] | unEscapeString (T.unpack x) == unEscapeString (T.unpack src) ->  -- autolink
@@ -457,12 +454,12 @@ inlineToSile (Link _ txt (src,_))
         [Str x] | Just rest <- T.stripPrefix "mailto:" src,
                   unEscapeString (T.unpack x) == unEscapeString (T.unpack rest) -> -- email autolink
              do src' <- stringToSile URLString (escapeURI src)
-                contents <- inlineListToSile txt
+                content <- inlineListToSile txt
                 return $ "\\href" <> braces (literal src') <>
-                   braces ("\\url" <> braces contents)
-        _ -> do contents <- inlineListToSile txt
+                   braces ("\\url" <> braces content)
+        _ -> do content <- inlineListToSile txt
                 src' <- stringToSile URLString (escapeURI src)
-                return $ literal ("\\href{" <> src' <> "}{") <> contents <> char '}'
+                return $ literal ("\\href{" <> src' <> "}{") <> content <> char '}'
                 -- let params = (["src=\"" <> literal src' <> "\""]) <>
                 --               (if null tit
                 --                 then []
@@ -473,7 +470,7 @@ inlineToSile (Link _ txt (src,_))
                 --     linkattrs
                 --       | null params = empty
                 --       | otherwise = brackets $ hcat (intersperse "," (map text params))
-                -- return $ literal ("\\href" <> linkattrs <> braces contents)
+                -- return $ literal ("\\href" <> linkattrs <> braces content)
 inlineToSile il@(Image _ _ (src, _))
   | Just _ <- T.stripPrefix "data:" src = do
   report $ InlineNotRendered il
@@ -486,10 +483,10 @@ inlineToSile (Image _ _ (source, _)) = do
                    else T.pack $ unEscapeString $ T.unpack source
   source'' <- stringToSile URLString source'
   return $ "\\img" <> brackets ("src=" <> literal source'')
-inlineToSile (Note contents) = do
+inlineToSile (Note content) = do
   setEmptyLine False
-  contents' <- blockListToSile contents
-  let optnl = case reverse contents of
+  contents' <- blockListToSile content
+  let optnl = case reverse content of
                    (CodeBlock _ _ : _) -> cr
                    _                   -> empty
   let noteContents = nest 2 contents' <> optnl
