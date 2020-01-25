@@ -314,103 +314,10 @@ blockToSile (Header level (id',classes,_) lst) = do
   hdr <- sectionHeader classes id' level lst
   modify $ \s -> s{stInHeading = False}
   return hdr
--- blockToSile (Table caption aligns widths heads rows) = do
---   headers <- if all null heads
---                 then return empty
---                 else do
---                     contents <- (tableRowToSile True aligns widths) heads
---                     return ("\\toprule" $$ contents $$ "\\midrule")
---   let endhead = if all null heads
---                    then empty
---                    else text "\\endhead"
---   let endfirsthead = if all null heads
---                        then empty
---                        else text "\\endfirsthead"
---   captionText <- inlineListToSile caption
---   let capt = if isEmpty captionText
---                 then empty
---                 else "\\caption" <> braces captionText
---                          <> "\\tabularnewline"
---                          $$ headers
---                          $$ endfirsthead
---   rows' <- mapM (tableRowToSile False aligns widths) rows
---   let colDescriptors = literal $ T.concat $ map toColDescriptor aligns
---   modify $ \s -> s{ stTable = True }
---   return $ "\\begin{longtable}[]" <>
---               braces ("@{}" <> colDescriptors <> "@{}")
---               -- the @{} removes extra space at beginning and end
---          $$ capt
---          $$ "\\endhead"
---          $$ vcat rows'
---          $$ "\\bottomrule"
---          $$ "\\end{longtable}"
-
-toColDescriptor :: Alignment -> Text
-toColDescriptor align =
-  case align of
-         AlignLeft    -> "l"
-         AlignRight   -> "r"
-         AlignCenter  -> "c"
-         AlignDefault -> "l"
 
 blockListToSile :: PandocMonad m => [Block] -> LW m (Doc Text)
 blockListToSile lst =
   vsep `fmap` mapM (\b -> setEmptyLine True >> blockToSile b) lst
-
-tableRowToSile :: PandocMonad m
-                => Bool
-                -> [Alignment]
-                -> [Double]
-                -> [[Block]]
-                -> LW m (Doc Text)
-tableRowToSile header aligns widths cols = do
-  -- scale factor compensates for extra space between columns
-  -- so the whole table isn't larger than columnwidth
-  let scaleFactor = 0.97 ** fromIntegral (length aligns)
-  let widths' = map (scaleFactor *) widths
-  cells <- mapM (tableCellToSile header) $ zip3 widths' aligns cols
-  return $ hsep (intersperse "&" cells) <> "\\tabularnewline"
-
--- we need to go to some lengths to get line breaks working:
--- as LineBreak bs = \vtop{\hbox{\strut as}\hbox{\strut bs}}.
-fixLineBreaks :: Block -> Block
-fixLineBreaks (Para ils)  = Para $ fixLineBreaks' ils
-fixLineBreaks (Plain ils) = Plain $ fixLineBreaks' ils
-fixLineBreaks x           = x
-
-fixLineBreaks' :: [Inline] -> [Inline]
-fixLineBreaks' ils = case splitBy (== LineBreak) ils of
-                       []     -> []
-                       [xs]   -> xs
-                       chunks -> RawInline "sile" "\\vtop{" :
-                                 concatMap tohbox chunks ++
-                                 [RawInline "sile" "}"]
-  where tohbox ys = RawInline "sile" "\\hbox{\\strut " : ys ++
-                    [RawInline "sile" "}"]
-
--- We also change display math to inline math, since display
--- math breaks in simple tables.
-displayMathToInline :: Inline -> Inline
-displayMathToInline (Math DisplayMath x) = Math InlineMath x
-displayMathToInline x                    = x
-
-tableCellToSile :: PandocMonad m => Bool -> (Double, Alignment, [Block])
-                 -> LW m (Doc Text)
-tableCellToSile _      (0,     _,     blocks) =
-  blockListToSile $ walk fixLineBreaks $ walk displayMathToInline blocks
-tableCellToSile header (width, align, blocks) = do
-  cellContents <- blockListToSile blocks
-  let valign = text $ if header then "[b]" else "[t]"
-  let halign = case align of
-               AlignLeft    -> "\\raggedright"
-               AlignRight   -> "\\raggedleft"
-               AlignCenter  -> "\\centering"
-               AlignDefault -> "\\raggedright"
-  return $ ("\\begin{minipage}" <> valign <>
-            braces (text (printf "%.2f\\columnwidth" width)) <>
-            (halign <> "\\strut" <> cr <> cellContents <> cr) <>
-            "\\strut\\end{minipage}")
-
 
 listItemToSile :: PandocMonad m => [Block] -> LW m (Doc Text)
 listItemToSile lst = do
