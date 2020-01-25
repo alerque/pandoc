@@ -88,12 +88,11 @@ pandocToSile options (Pandoc meta blocks) = do
         case lookupContext "documentclass" (writerVariables options) `mplus`
               (stringify <$> lookupMeta "documentclass" meta) of
                  Just x -> x
-  let (blocks'', lastHeader) = if writerCiteMethod options == Citeproc then
-                                 (blocks', [])
-                               else case reverse blocks' of
-                                 Header 1 _ il : _ -> (init blocks', il)
-                                 _             -> (blocks', [])
-  main <- blockListToSile blocks''
+                 Nothing -> case writerTopLevelDivision options of
+                                 TopLevelPart    -> "book"
+                                 TopLevelChapter -> "book"
+                                 _               -> "plain"
+  main <- blockListToSile blocks'
   st <- get
   titleMeta <- stringToSile TextString $ stringify $ docTitle meta
   authorsMeta <- mapM (stringToSile TextString . stringify) $ docAuthors meta
@@ -136,7 +135,7 @@ stringToSile  context zs = do
     foldr (go opts context) mempty $ T.unpack $ zs
  where
   go :: WriterOptions -> StringContext -> Char -> String -> String
-  go opts ctx x xs   =
+  go _ ctx x xs   =
     let isUrl = ctx == URLString
         emits s = s <> xs
         emitc c = c : xs
