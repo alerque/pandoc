@@ -252,30 +252,30 @@ blockToSile (DefinitionList lst) = do
   let opts = [("tight", "true") | all isTightList (map snd lst)]
   options <- toOptions "" [] opts
   return $ inOptEnv "DefinitionList" options content
-blockToSile HorizontalRule = return $
-  "\\HorizontalRule"
+blockToSile HorizontalRule =
+  return "\\HorizontalRule"
 blockToSile (Header level (id',classes,_) lst) = do
   modify $ \s -> s{stInHeading = True}
   hdr <- sectionHeader classes id' level lst
   modify $ \s -> s{stInHeading = False}
   return hdr
-blockToSile (Table _ _ _ _ _) = do
-  return $ "\\script{SU.warn(\"Unimplemented, tables!\")}"
+blockToSile Table{} =
+  return "\\script{SU.warn(\"Unimplemented, tables!\")}"
 
 blockListToSile :: PandocMonad m => [Block] -> LW m (Doc Text)
 blockListToSile lst =
   vsep `fmap` mapM (\b -> setEmptyLine True >> blockToSile b) lst
 
 listItemToSile :: PandocMonad m => [Block] -> LW m (Doc Text)
-listItemToSile lst = do
-  blockListToSile lst >>= return . (inCmd "listitem")
+listItemToSile lst =
+  inCmd "listitem" <$> blockListToSile lst
 
 defListItemToSile :: PandocMonad m => ([Inline], [[Block]]) -> LW m (Doc Text)
 defListItemToSile (term, defs) = do
     term' <- inlineListToSile term
     def'  <- liftM vsep $ mapM blockListToSile defs
     return $ case defs of
-     (((Header _ _ _) : _) : _) ->
+     ((Header{} : _) : _) ->
        "\\listitem" <> braces term' <> " ~ " $$ def'
      _                          ->
        "\\listitem" <> braces term' $$ def'
