@@ -45,16 +45,10 @@ import Text.Printf (printf)
 
 data WriterState =
   WriterState {
-                stInQuote       :: Bool          -- true if in a blockquote
-              , stInHeading     :: Bool          -- true if in a section heading
-              , stInItem        :: Bool          -- true if in \item[..]
+                stInHeading     :: Bool          -- true if in a section heading
               , stOLLevel       :: Int           -- level of ordered list nesting
               , stOptions       :: WriterOptions -- writer options, so they don't have to be parameter
-              , stTable         :: Bool          -- true if document has a table
-              , stStrikeout     :: Bool          -- true if document has strikeout
-              , stUrl           :: Bool          -- true if document has visible URL link
               , stGraphics      :: Bool          -- true if document contains images
-              , stLHS           :: Bool          -- true if document has literate haskell code
               , stBook          :: Bool          -- true if document uses book class
               , stInternalLinks :: [Text]      -- list of internal link targets
               , stEmptyLine     :: Bool          -- true if no content on line
@@ -62,16 +56,10 @@ data WriterState =
 
 startingState :: WriterOptions -> WriterState
 startingState options = WriterState {
-                  stInQuote = False
-                , stInHeading = False
-                , stInItem = False
+                  stInHeading = False
                 , stOLLevel = 1
                 , stOptions = options
-                , stTable = False
-                , stStrikeout = False
-                , stUrl = False
                 , stGraphics = False
-                , stLHS = False
                 , stBook = case writerTopLevelDivision options of
                                 TopLevelPart    -> True
                                 TopLevelChapter -> True
@@ -137,11 +125,7 @@ pandocToSile options (Pandoc meta blocks) = do
                   defField "author-meta"
                         (T.intercalate "; " authorsMeta) $
                   defField "documentclass" documentClass $
-                  defField "tables" (stTable st) $
-                  defField "strikeout" (stStrikeout st) $
-                  defField "url" (stUrl st) $
                   defField "numbersections" (writerNumberSections options) $
-                  defField "lhs" (stLHS st) $
                   defField "graphics" (stGraphics st) $
                   defField "colorlinks" (any hasStringValue
                            ["citecolor", "urlcolor", "linkcolor", "toccolor",
@@ -582,13 +566,11 @@ inlineToSile (Link _ txt (src,_))
   | otherwise =
   case txt of
         [Str x] | unEscapeString (T.unpack x) == unEscapeString (T.unpack src) ->  -- autolink
-             do modify $ \s -> s{ stUrl = True }
-                src' <- stringToSile URLString (escapeURI src)
+             do src' <- stringToSile URLString (escapeURI src)
                 return $ literal $ "\\url{" <> src' <> "}"
         [Str x] | Just rest <- T.stripPrefix "mailto:" src,
                   unEscapeString (T.unpack x) == unEscapeString (T.unpack rest) -> -- email autolink
-             do modify $ \s -> s{ stUrl = True }
-                src' <- stringToSile URLString (escapeURI src)
+             do src' <- stringToSile URLString (escapeURI src)
                 contents <- inlineListToSile txt
                 return $ "\\href" <> braces (literal src') <>
                    braces ("\\url" <> braces contents)
