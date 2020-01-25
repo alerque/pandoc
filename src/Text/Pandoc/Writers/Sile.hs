@@ -386,37 +386,16 @@ inlineToSile SoftBreak = do
        WrapNone     -> return space
        WrapPreserve -> return cr
 inlineToSile Space = return space
-inlineToSile (Link _ txt (src,_))
-  | Just ('#', ident) <- T.uncons src
-  = do
+inlineToSile (Link (ident,classes,kvs) txt (src,_))
+  | Just ('#', ident') <- T.uncons src = do
       content <- inlineListToSile txt
-      lab <- toLabel ident
-      return $ text "\\pdf:link" <> brackets ("dest=" <> literal lab) <> braces content
-  | otherwise =
-  case txt of
-        [Str x] | unEscapeString (T.unpack x) == unEscapeString (T.unpack src) ->  -- autolink
-             do src' <- stringToSile URLString (escapeURI src)
-                return $ literal $ "\\url{" <> src' <> "}"
-        [Str x] | Just rest <- T.stripPrefix "mailto:" src,
-                  unEscapeString (T.unpack x) == unEscapeString (T.unpack rest) -> -- email autolink
-             do src' <- stringToSile URLString (escapeURI src)
+      options <- toOptions ident' classes kvs
+      return $ inOptCmd "pdf:link" options content
+  | otherwise = do
                 content <- inlineListToSile txt
-                return $ "\\href" <> braces (literal src') <>
-                   braces ("\\url" <> braces content)
-        _ -> do content <- inlineListToSile txt
                 src' <- stringToSile URLString (escapeURI src)
-                return $ literal ("\\href{" <> src' <> "}{") <> content <> char '}'
-                -- let params = (["src=\"" <> literal src' <> "\""]) <>
-                --               (if null tit
-                --                 then []
-                --                 else [ "title=\"" ++ tit ++ "\"" ]) <>
-                --               (if null kvs
-                --                   then []
-                --                   else [ key ++ "=\"" ++ val ++ "\"" | (key, val) <- kvs ])
-                --     linkattrs
-                --       | null params = empty
-                --       | otherwise = brackets $ hcat (intersperse "," (map text params))
-                -- return $ literal ("\\href" <> linkattrs <> braces content)
+                options <- toOptions ident classes (kvs ++ [("src", src')])
+                return $ inOptCmd "href" options content
 inlineToSile il@(Image _ _ (src, _))
   | Just _ <- T.stripPrefix "data:" src = do
   report $ InlineNotRendered il
