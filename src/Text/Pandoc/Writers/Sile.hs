@@ -314,9 +314,6 @@ inlineListToSile :: PandocMonad m
                   -> LW m (Doc Text)
 inlineListToSile lst = hcat <$>
   mapM inlineToSile (fixLineInitialSpaces $ lst)
-    -- nonbreaking spaces (~) in Sile don't work after line breaks,
-    -- so we turn nbsps after hard breaks to \hspace commands.
-    -- this is mostly used in verse.
  where fixLineInitialSpaces [] = []
        fixLineInitialSpaces (LineBreak : Str s : xs)
          | Just ('\160', _) <- T.uncons s
@@ -324,7 +321,7 @@ inlineListToSile lst = hcat <$>
        fixLineInitialSpaces (x:xs) = x : fixLineInitialSpaces xs
        fixNbsps s = let (ys,zs) = T.span (=='\160') s
                     in  replicate (T.length ys) hspace <> [Str zs]
-       hspace = RawInline "sile" "\\kern[width=1spc]"
+       hspace = RawInline "sile" "\\nbsp{}" -- TODO: use U+00A0
 
 -- | Convert inline element to Sile
 inlineToSile :: PandocMonad m
