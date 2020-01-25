@@ -48,7 +48,6 @@ data WriterState =
                 stInHeading     :: Bool          -- true if in a section heading
               , stOLLevel       :: Int           -- level of ordered list nesting
               , stOptions       :: WriterOptions -- writer options, so they don't have to be parameter
-              , stGraphics      :: Bool          -- true if document contains images
               , stBook          :: Bool          -- true if document uses book class
               , stInternalLinks :: [Text]      -- list of internal link targets
               , stEmptyLine     :: Bool          -- true if no content on line
@@ -59,7 +58,6 @@ startingState options = WriterState {
                   stInHeading = False
                 , stOLLevel = 1
                 , stOptions = options
-                , stGraphics = False
                 , stBook = case writerTopLevelDivision options of
                                 TopLevelPart    -> True
                                 TopLevelChapter -> True
@@ -79,11 +77,6 @@ pandocToSile :: PandocMonad m
               => WriterOptions -> Pandoc -> LW m Text
 pandocToSile options (Pandoc meta blocks) = do
   let blocks' = blocks
-  -- see if there are internal links
-  let isInternalLink (Link _ _ (s,_))
-        | Just ('#', xs) <- T.uncons s = [xs]
-      isInternalLink _                     = []
-  modify $ \s -> s{ stInternalLinks = query isInternalLink blocks' }
   let colwidth = if writerWrapText options == WrapAuto
                     then Just $ writerColumns options
                     else Nothing
@@ -104,15 +97,6 @@ pandocToSile options (Pandoc meta blocks) = do
   st <- get
   titleMeta <- stringToSile TextString $ stringify $ docTitle meta
   authorsMeta <- mapM (stringToSile TextString . stringify) $ docAuthors meta
-  let hasStringValue x = isJust (getField x metadata :: Maybe (Doc Text))
-  let geometryFromMargins = mconcat $ intersperse ("," :: Doc Text) $
-                            mapMaybe (\(x,y) ->
-                                ((x <> "=") <>) <$> getField y metadata)
-                              [("lmargin","margin-left")
-                              ,("rmargin","margin-right")
-                              ,("tmargin","margin-top")
-                              ,("bmargin","margin-bottom")
-                              ]
 
   let context  =  defField "toc" (writerTableOfContents options) $
                   defField "toc-depth" (tshow
@@ -126,12 +110,6 @@ pandocToSile options (Pandoc meta blocks) = do
                         (T.intercalate "; " authorsMeta) $
                   defField "documentclass" documentClass $
                   defField "numbersections" (writerNumberSections options) $
-                  defField "graphics" (stGraphics st) $
-                  defField "colorlinks" (any hasStringValue
-                           ["citecolor", "urlcolor", "linkcolor", "toccolor",
-                            "filecolor"]) $
-                  defField "section-titles" True $
-                  defField "geometry" geometryFromMargins $
                   (case T.uncons . render Nothing <$>
                         getField "papersize" metadata of
                         -- uppercase a4, a5, etc.
@@ -449,7 +427,6 @@ inlineToSile il@(Image _ _ (src, _))
   return empty
 inlineToSile (Image _ _ (source, _)) = do
   setEmptyLine False
-  modify $ \s -> s{ stGraphics = True }
   let source' = if isURI source
                    then source
                    else T.pack $ unEscapeString $ T.unpack source
