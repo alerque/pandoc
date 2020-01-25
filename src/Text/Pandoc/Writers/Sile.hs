@@ -179,12 +179,12 @@ toLabel z = go `fmap` stringToSile URLString z
        | otherwise -> T.pack $ "ux" <> printf "%x" (ord x)
 
 toOptions :: PandocMonad m => Text -> [Text] -> [(Text, Text)] -> LW m [Text]
-toOptions id classes kvs = do
-  ref <- toLabel id
+toOptions ident classes kvs = do
+  ref <- toLabel ident
   -- -- lang <- toLang $ lookup "lang" kvs
   let classes' = [ val | (val) <- classes ]
   let classes'' = T.intercalate "," classes'
-  let options = (if T.null id
+  let options = (if T.null ident
                   then []
                   else [ "id=" <> ref ]) <>
                 (if null classes'
@@ -219,8 +219,8 @@ blockToSile :: PandocMonad m
              => Block     -- ^ Block to convert
              -> LW m (Doc Text)
 blockToSile Null = return empty
-blockToSile (Div (id,classes,kvs) bs) = do
-  options <- toOptions id classes kvs
+blockToSile (Div (ident,classes,kvs) bs) = do
+  options <- toOptions ident classes kvs
   contents <- blockListToSile bs
   return $ inBlockCmd "Div" options contents
 blockToSile (Plain lst) =
