@@ -183,7 +183,9 @@ inOptEnv cmd args content = do
                  then ""
                  else brackets $ hcat (intersperse "," (map literal args))
       cmd' = braces (literal cmd)
-  literal "\\begin" <> args' <> cmd' $$ content $$ literal "\\end" <> cmd'
+  literal "\\begin" <> args' <> cmd'
+        $$ content
+        $$ literal "\\end" <> cmd'
 
 -- | Convert Pandoc block element to Sile.
 blockToSile :: PandocMonad m
@@ -205,7 +207,7 @@ blockToSile (LineBlock lns) =
 blockToSile (BlockQuote lst) = do
   let options = []
   content <- blockListToSile lst
-  return $ inOptEnv "BlockQuote" options content
+  return $ inOptEnv "quote" options content
 blockToSile (CodeBlock (ident,classes,kvs) str) = do
   options <- toOptions ident classes kvs
   content <- liftM literal $ stringToSile CodeString str
@@ -219,26 +221,28 @@ blockToSile b@(RawBlock f x)
 blockToSile (BulletList []) = return empty  -- otherwise sile error
 blockToSile (BulletList lst) = do
   items <- mapM listItemToSile lst
-  return $ literal ("\\begin{listarea}") $$ vcat items $$
-             "\\end{listarea}"
+  let content = vcat items
+  return $ inOptEnv "listarea" [] content
 blockToSile (OrderedList _ []) = return empty -- otherwise error
-blockToSile (OrderedList (_, numstyle, _) lst) = do
+blockToSile (OrderedList (start, numstyle, _) lst) = do
   st <- get
   let oldlevel = stOLLevel st
   put $ st {stOLLevel = oldlevel + 1}
   items <- mapM listItemToSile lst
+  let content = vcat items
   modify (\s -> s {stOLLevel = oldlevel})
-  let tostyle = "numberstyle=" ++ case numstyle of
-                       Decimal      -> "arabic"
-                       UpperRoman   -> "Roman"
-                       LowerRoman   -> "roman"
-                       UpperAlpha   -> "Alpha"
-                       LowerAlpha   -> "alpha"
-                       Example      -> "arabic"
-                       DefaultStyle -> "arabic"
-  return $ text ("\\begin[" ++ tostyle ++ "]{listarea}")
-         $$ vcat items
-         $$ "\\end{listarea}"
+  let numstyle' = case numstyle of
+                      Decimal      -> "arabic"
+                      UpperRoman   -> "Roman"
+                      LowerRoman   -> "roman"
+                      UpperAlpha   -> "Alpha"
+                      LowerAlpha   -> "alpha"
+                      Example      -> "arabic"
+                      DefaultStyle -> "arabic"
+  let start' = T.pack $ show start
+  options <- toOptions "" [] [("numberstyle", numstyle'),
+                              ("start", start')]
+  return $ inOptEnv "listarea" options content
 blockToSile (DefinitionList []) = return empty
 blockToSile (DefinitionList lst) = do
   items <- mapM defListItemToSile lst
