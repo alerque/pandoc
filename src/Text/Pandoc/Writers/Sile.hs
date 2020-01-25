@@ -194,6 +194,24 @@ toLabel z = go `fmap` stringToSile URLString z
        | x `elemText` "_-+=:;." -> T.singleton x
        | otherwise -> T.pack $ "ux" <> printf "%x" (ord x)
 
+toParams :: PandocMonad m => Text -> [Text] -> [(Text, Text)] -> LW m [Text]
+toParams id classes kvs = do
+  ref <- toLabel id
+  -- -- lang <- toLang $ lookup "lang" kvs
+  let classes' = filter (`notElem` [ "csl-no-emph", "csl-no-strong", "csl-no-smallcaps"]) classes
+  let classes'' = [ val | (val) <- classes' ]
+  let classes''' = T.intercalate "," classes''
+  let params = (if id == ""
+                  then []
+                  else [ "id=" <> ref ]) <>
+                (if null classes'
+                    then []
+                    else [ "classes=\"" <> classes''' <> "\"" ] ) <>
+                (if null kvs
+                    then []
+                    else [ key <> "=" <> attr | (key, attr) <- kvs ])
+  return params
+
 -- | Puts contents into Sile command.
 inCmd :: Text -> Doc Text -> Doc Text
 inCmd cmd contents = char '\\' <> literal cmd <> braces contents
@@ -509,32 +527,15 @@ inlineListToSile lst = hcat <$>
 inlineToSile :: PandocMonad m
               => Inline    -- ^ Inline to convert
               -> LW m (Doc Text)
-inlineToSile (Span (id',classes,kvs) ils) = do
-  ref <- toLabel id'
-  lang <- toLang $ lookup "lang" kvs
+inlineToSile (Span (id,classes,kvs) ils) = do
+  contents <- inlineListToSile ils
   let classToCommand = [ "csl-no-emph", "csl-no-strong", "csl-no-smallcaps" ]
   let cmds = filter (`elem` classToCommand) classes
   let classes' = filter (`notElem` classToCommand) classes
-  contents <- inlineListToSile ils
-  let classes' = filter (`notElem` [ "csl-no-emph", "csl-no-strong", "csl-no-smallcaps"]) classes
-  let classes'' = [ val | (val) <- classes' ]
-  let classes''' = T.intercalate "," classes''
-  let params = (if id' == ""
-                  then []
-                  else [ "id=" <> ref ]) <>
-               (if null classes'
-                  then []
-                  else [ "classes=\"" <> classes''' <> "\"" ] ) <>
-                (if null kvs
-                  then []
-                  else [ key <> "=" <> attr | (key, attr) <- kvs ])
+  params <- toParams id classes' kvs
   return $ if null cmds
-              then if null params
-                      then braces contents
-                      else inArgCmd "Span" params contents
-              else if null params
-                      then foldr inCmd contents cmds
-                      else inArgCmd "Span" params $ foldr inCmd contents cmds
+            then inArgCmd "Span" params contents
+            else inArgCmd "Span" params $ foldr inCmd contents cmds
 
 inlineToSile (Emph lst) =
   inCmd "Emph" <$> inlineListToSile lst
