@@ -138,7 +138,7 @@ stringToSile  context zs = do
          '}' -> emits "\\}"
          '%' -> emits "\\%"
          '\\'| isUrl     -> emitc '/' -- NB. / works as path sep even on Windows
-             | otherwise -> emits "\\"
+             | otherwise -> emits "\\\\"
          _ -> emitc x
 
 toLabel :: PandocMonad m => Text -> LW m Text
@@ -356,8 +356,9 @@ inlineToSile (Cite cits lst) = do
      Natbib   -> citationsToNatbib cits
      _        -> inlineListToSile lst
 
-inlineToSile (Code (_,_,_) str) =
-  return $ "\\code{" <> literal str <> "}"
+inlineToSile (Code (_,_,_) str) = do
+  content <- liftM literal $ stringToSile TextString str
+  return $ inCmd "code" content
 inlineToSile (Quoted SingleQuote lst) = do
   opts <- gets stOptions
   content <- inlineListToSile lst
