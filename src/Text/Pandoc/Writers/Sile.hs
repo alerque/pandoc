@@ -374,8 +374,9 @@ inlineToSile (Quoted DoubleQuote lst) = do
 inlineToSile (Str str) = do
   setEmptyLine False
   liftM literal $ stringToSile TextString str
-inlineToSile (Math _ str) =
-  return $ literal str
+inlineToSile (Math _ str) = do
+  content <- liftM literal $ stringToSile TextString str
+  return $ inCmd "Math" content
 inlineToSile (RawInline _ str) = do
   setEmptyLine False
   return $ literal str
