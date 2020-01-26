@@ -173,14 +173,14 @@ inCmd cmd content = do
 inOptCmd :: Text -> [Text] -> Doc Text -> Doc Text
 inOptCmd cmd args content = do
   let args' = if null args
-                 then ""
+                 then empty
                  else brackets $ hcat (intersperse "," (map literal args))
-  char '\\' <> literal cmd <> args' <> braces content
+  char '\\' <> literal cmd <> args' <> (if isEmpty content then empty else braces content)
 
 inOptEnv :: Text -> [Text] -> Doc Text -> Doc Text
 inOptEnv cmd args content = do
   let args' = if null args
-                 then ""
+                 then empty
                  else brackets $ hcat (intersperse "," (map literal args))
       cmd' = braces (literal cmd)
   literal "\\begin" <> args' <> cmd'
@@ -401,13 +401,17 @@ inlineToSile il@(Image _ _ (src, _))
   | Just _ <- T.stripPrefix "data:" src = do
   report $ InlineNotRendered il
   return empty
-inlineToSile (Image _ _ (source, _)) = do
+inlineToSile (Image (ident,classes,kvs) txt (source, tit)) = do
   setEmptyLine False
   let source' = if isURI source
                    then source
                    else T.pack $ unEscapeString $ T.unpack source
   source'' <- stringToSile URLString source'
-  return $ "\\img" <> brackets ("src=" <> literal source'')
+  let opts = kvs ++
+              [("src", source'')] ++
+              [("title", tit) | not (T.null tit)]
+  options <- toOptions ident classes opts
+  return $ inOptCmd "img" options empty
 inlineToSile (Note content) = do
   setEmptyLine False
   contents' <- blockListToSile content
