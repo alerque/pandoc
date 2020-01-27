@@ -208,14 +208,13 @@ blockToSILE (BlockQuote lst) = do
 blockToSILE (CodeBlock (ident,classes,kvs) str) = do
   options <- toOptions ident classes kvs
   content <- liftM literal $ stringToSILE CodeString str
-  return $ inOptEnv "verbatim" options content
+  return $ inOptEnv "CodeBlock" options content
 blockToSILE b@(RawBlock f x)
   | f == Format "sile" || f == Format "sil"
                         = return $ literal x
   | otherwise           = do
       report $ BlockNotRendered b
       return empty
-blockToSILE (BulletList []) = return empty  -- otherwise sile error
 blockToSILE (BulletList lst) = do
   items <- mapM listItemToSILE lst
   let content = vcat items
@@ -263,7 +262,7 @@ blockListToSILE lst =
 
 listItemToSILE :: PandocMonad m => [Block] -> LW m (Doc Text)
 listItemToSILE lst =
-  inCmd "listitem" <$> blockListToSILE lst
+  inCmd "ListItem" <$> blockListToSILE lst
 
 defListItemToSILE :: PandocMonad m => ([Inline], [[Block]]) -> LW m (Doc Text)
 defListItemToSILE (term, defs) = do
@@ -296,9 +295,9 @@ sectionHeader classes id' level lst = do
                           0  -> "chapter"
                           1  -> "section"
                           2  -> "subsection"
-                          _  -> "sectionHeader"
-  options <- toOptions id' classes [ ("level", level'') ]
-  return $ inOptCmd sectionType options content
+                          _  -> ""
+  options <- toOptions id' classes [ ("level", level''), ("type", sectionType) ]
+  return $ inOptCmd "Header" options content
 
 -- | Convert list of inline elements to SILE.
 inlineListToSILE :: PandocMonad m
