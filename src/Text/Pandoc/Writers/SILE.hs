@@ -37,8 +37,7 @@ import Text.Printf (printf)
 
 data WriterState =
   WriterState {
-                stInHeading     :: Bool          -- true if in a section heading
-              , stOLLevel       :: Int           -- level of ordered list nesting
+                stOLLevel       :: Int           -- level of ordered list nesting
               , stOptions       :: WriterOptions -- writer options, so they don't have to be parameter
               , stHasChapters   :: Bool          -- true if document has chapters
               , stEmptyLine     :: Bool          -- true if no content on line
@@ -46,8 +45,7 @@ data WriterState =
 
 startingState :: WriterOptions -> WriterState
 startingState options = WriterState {
-                  stInHeading = False
-                , stOLLevel = 1
+                  stOLLevel = 1
                 , stOptions = options
                 , stHasChapters = case writerTopLevelDivision options of
                                 TopLevelPart    -> True
@@ -255,9 +253,7 @@ blockToSILE (DefinitionList lst) = do
 blockToSILE HorizontalRule =
   return "\\HorizontalRule"
 blockToSILE (Header level (id',classes,_) lst) = do
-  modify $ \s -> s{stInHeading = True}
   hdr <- sectionHeader classes id' level lst
-  modify $ \s -> s{stInHeading = False}
   return hdr
 blockToSILE Table{} =
   return "\\script{SU.warn(\"Unimplemented, tables!\")}"
