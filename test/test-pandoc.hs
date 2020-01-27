@@ -86,7 +86,7 @@ tests pandocPath = testGroup "pandoc tests"
           , testGroup "Jira" Tests.Readers.Jira.tests
           , testGroup "Org" Tests.Readers.Org.tests
           , testGroup "RST" Tests.Readers.RST.tests
-          , testGroup "SILE" Tests.Readers.SILE.tests
+          -- , testGroup "SILE" Tests.Readers.SILE.tests
           , testGroup "Docx" Tests.Readers.Docx.tests
           , testGroup "Odt" Tests.Readers.Odt.tests
           , testGroup "Txt2Tags" Tests.Readers.Txt2Tags.tests
