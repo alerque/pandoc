@@ -51,14 +51,9 @@ $endif$
 $if(rights-meta)$
 \define[command=rights]{$title-rights$}
 $endif$
-%\halftitlepage
-%\titlepage
-%\publicationpage
-%\tableofcontents
 $body$
 $for(include-after)$
 $include-after$
-% TODO: bibtex
 \script[src=$include-after$]
 $endfor$
 \end{document}

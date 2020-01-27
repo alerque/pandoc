@@ -4,18 +4,18 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ViewPatterns        #-}
 {- |
-   Module      : Text.Pandoc.Writers.Sile
-   Copyright   : Copyright (C) 2015-2020 Caleb Maclennan
+   Module      : Text.Pandoc.Writers.SILE
+   Copyright   : Copyright (C) 2015-2020 Caleb Maclennan <caleb@alerque.com>
    License     : GNU GPL, version 2 or above
 
    Maintainer  : Caleb Maclennan <caleb@alerque.com>
    Stability   : alpha
    Portability : portable
 
-Conversion of 'Pandoc' format into Sile.
+Conversion of 'Pandoc' format into SILE.
 -}
-module Text.Pandoc.Writers.Sile (
-    writeSile
+module Text.Pandoc.Writers.SILE (
+    writeSILE
   ) where
 import Prelude
 import Control.Monad.State.Strict
@@ -55,24 +55,24 @@ startingState options = WriterState {
                                 _               -> False
                 , stEmptyLine = True }
 
--- | Convert Pandoc to Sile.
-writeSile :: PandocMonad m => WriterOptions -> Pandoc -> m Text
-writeSile options document =
-  evalStateT (pandocToSile options document) $
+-- | Convert Pandoc to SILE.
+writeSILE :: PandocMonad m => WriterOptions -> Pandoc -> m Text
+writeSILE options document =
+  evalStateT (pandocToSILE options document) $
     startingState options
 
 type LW m = StateT WriterState m
 
-pandocToSile :: PandocMonad m
+pandocToSILE :: PandocMonad m
               => WriterOptions -> Pandoc -> LW m Text
-pandocToSile options (Pandoc meta blocks) = do
+pandocToSILE options (Pandoc meta blocks) = do
   let blocks' = blocks
   let colwidth = if writerWrapText options == WrapAuto
                     then Just $ writerColumns options
                     else Nothing
   metadata <- metaToContext options
-              blockListToSile
-              (fmap chomp . inlineListToSile)
+              blockListToSILE
+              (fmap chomp . inlineListToSILE)
               meta
   let chaptersClasses = ["book","jbook","markdown","bible","triglot","docbook"]
   let documentClass =
@@ -85,10 +85,10 @@ pandocToSile options (Pandoc meta blocks) = do
                                  _               -> "plain"
   when (documentClass `elem` chaptersClasses) $
      modify $ \s -> s{ stHasChapters = True }
-  main <- blockListToSile blocks'
+  main <- blockListToSILE blocks'
   st <- get
-  titleMeta <- stringToSile TextString $ stringify $ docTitle meta
-  authorsMeta <- mapM (stringToSile TextString . stringify) $ docAuthors meta
+  titleMeta <- stringToSILE TextString $ stringify $ docTitle meta
+  authorsMeta <- mapM (stringToSILE TextString . stringify) $ docAuthors meta
 
   let context  =  defField "toc" (writerTableOfContents options) $
                   defField "toc-depth" (tshow
@@ -121,9 +121,9 @@ data StringContext = TextString
                    | CodeString
                    deriving (Eq)
 
--- escape things as needed for Sile
-stringToSile :: PandocMonad m => StringContext -> Text -> LW m Text
-stringToSile  context zs = do
+-- escape things as needed for SILE
+stringToSILE :: PandocMonad m => StringContext -> Text -> LW m Text
+stringToSILE  context zs = do
   opts <- gets stOptions
   return $ T.pack $
     foldr (go opts context) mempty $ T.unpack $ zs
@@ -142,7 +142,7 @@ stringToSile  context zs = do
          _ -> emitc x
 
 toLabel :: PandocMonad m => Text -> LW m Text
-toLabel z = go `fmap` stringToSile URLString z
+toLabel z = go `fmap` stringToSILE URLString z
  where
    go = T.concatMap $ \x -> case x of
      _ | (isLetter x || isDigit x) && isAscii x -> T.singleton x
@@ -187,48 +187,48 @@ inOptEnv cmd args content = do
         $$ content
         $$ literal "\\end" <> cmd'
 
--- | Convert Pandoc block element to Sile.
-blockToSile :: PandocMonad m
+-- | Convert Pandoc block element to SILE.
+blockToSILE :: PandocMonad m
              => Block     -- ^ Block to convert
              -> LW m (Doc Text)
-blockToSile Null = return empty
-blockToSile (Div (ident,classes,kvs) bs) = do
+blockToSILE Null = return empty
+blockToSILE (Div (ident,classes,kvs) bs) = do
   options <- toOptions ident classes kvs
-  content <- blockListToSile bs
+  content <- blockListToSILE bs
   return $ inOptEnv "Div" options content
-blockToSile (Plain lst) =
-  inlineListToSile lst
-blockToSile (Para [Str ".",Space,Str ".",Space,Str "."]) = do
-  inlineListToSile [Str ".",Space,Str ".",Space,Str "."]
-blockToSile (Para lst) =
-  inlineListToSile lst
-blockToSile (LineBlock lns) =
-  blockToSile $ linesToPara lns
-blockToSile (BlockQuote lst) = do
+blockToSILE (Plain lst) =
+  inlineListToSILE lst
+blockToSILE (Para [Str ".",Space,Str ".",Space,Str "."]) = do
+  inlineListToSILE [Str ".",Space,Str ".",Space,Str "."]
+blockToSILE (Para lst) =
+  inlineListToSILE lst
+blockToSILE (LineBlock lns) =
+  blockToSILE $ linesToPara lns
+blockToSILE (BlockQuote lst) = do
   let options = []
-  content <- blockListToSile lst
+  content <- blockListToSILE lst
   return $ inOptEnv "quote" options content
-blockToSile (CodeBlock (ident,classes,kvs) str) = do
+blockToSILE (CodeBlock (ident,classes,kvs) str) = do
   options <- toOptions ident classes kvs
-  content <- liftM literal $ stringToSile CodeString str
+  content <- liftM literal $ stringToSILE CodeString str
   return $ inOptEnv "verbatim" options content
-blockToSile b@(RawBlock f x)
+blockToSILE b@(RawBlock f x)
   | f == Format "sile" || f == Format "sil"
                         = return $ literal x
   | otherwise           = do
       report $ BlockNotRendered b
       return empty
-blockToSile (BulletList []) = return empty  -- otherwise sile error
-blockToSile (BulletList lst) = do
-  items <- mapM listItemToSile lst
+blockToSILE (BulletList []) = return empty  -- otherwise sile error
+blockToSILE (BulletList lst) = do
+  items <- mapM listItemToSILE lst
   let content = vcat items
   return $ inOptEnv "listarea" [] content
-blockToSile (OrderedList _ []) = return empty -- otherwise error
-blockToSile (OrderedList (start, numstyle, _) lst) = do
+blockToSILE (OrderedList _ []) = return empty -- otherwise error
+blockToSILE (OrderedList (start, numstyle, _) lst) = do
   st <- get
   let oldlevel = stOLLevel st
   put $ st {stOLLevel = oldlevel + 1}
-  items <- mapM listItemToSile lst
+  items <- mapM listItemToSILE lst
   let content = vcat items
   modify (\s -> s {stOLLevel = oldlevel})
   let numstyle' = case numstyle of
@@ -245,35 +245,35 @@ blockToSile (OrderedList (start, numstyle, _) lst) = do
               [("tight", "true") | isTightList lst]
   options <- toOptions "" [] opts
   return $ inOptEnv "OrderedList" options content
-blockToSile (DefinitionList []) = return empty
-blockToSile (DefinitionList lst) = do
-  items <- mapM defListItemToSile lst
+blockToSILE (DefinitionList []) = return empty
+blockToSILE (DefinitionList lst) = do
+  items <- mapM defListItemToSILE lst
   let content = vcat items
   let opts = [("tight", "true") | all isTightList (map snd lst)]
   options <- toOptions "" [] opts
   return $ inOptEnv "DefinitionList" options content
-blockToSile HorizontalRule =
+blockToSILE HorizontalRule =
   return "\\HorizontalRule"
-blockToSile (Header level (id',classes,_) lst) = do
+blockToSILE (Header level (id',classes,_) lst) = do
   modify $ \s -> s{stInHeading = True}
   hdr <- sectionHeader classes id' level lst
   modify $ \s -> s{stInHeading = False}
   return hdr
-blockToSile Table{} =
+blockToSILE Table{} =
   return "\\script{SU.warn(\"Unimplemented, tables!\")}"
 
-blockListToSile :: PandocMonad m => [Block] -> LW m (Doc Text)
-blockListToSile lst =
-  vsep `fmap` mapM (\b -> setEmptyLine True >> blockToSile b) lst
+blockListToSILE :: PandocMonad m => [Block] -> LW m (Doc Text)
+blockListToSILE lst =
+  vsep `fmap` mapM (\b -> setEmptyLine True >> blockToSILE b) lst
 
-listItemToSile :: PandocMonad m => [Block] -> LW m (Doc Text)
-listItemToSile lst =
-  inCmd "listitem" <$> blockListToSile lst
+listItemToSILE :: PandocMonad m => [Block] -> LW m (Doc Text)
+listItemToSILE lst =
+  inCmd "listitem" <$> blockListToSILE lst
 
-defListItemToSile :: PandocMonad m => ([Inline], [[Block]]) -> LW m (Doc Text)
-defListItemToSile (term, defs) = do
-    term' <- inlineListToSile term
-    def'  <- liftM vsep $ mapM blockListToSile defs
+defListItemToSILE :: PandocMonad m => ([Inline], [[Block]]) -> LW m (Doc Text)
+defListItemToSILE (term, defs) = do
+    term' <- inlineListToSILE term
+    def'  <- liftM vsep $ mapM blockListToSILE defs
     return $ case defs of
      ((Header{} : _) : _) ->
        "\\listitem" <> braces term' <> " ~ " $$ def'
@@ -287,7 +287,7 @@ sectionHeader :: PandocMonad m
               -> [Inline]
               -> LW m (Doc Text)
 sectionHeader classes id' level lst = do
-  content <- inlineListToSile lst
+  content <- inlineListToSILE lst
   book <- gets stHasChapters
   opts <- gets stOptions
   let topLevelDivision = if book && writerTopLevelDivision opts == TopLevelDefault
@@ -308,12 +308,12 @@ sectionHeader classes id' level lst = do
   options <- toOptions id' classes [ ("level", level'') ]
   return $ inOptCmd sectionType options content
 
--- | Convert list of inline elements to Sile.
-inlineListToSile :: PandocMonad m
+-- | Convert list of inline elements to SILE.
+inlineListToSILE :: PandocMonad m
                   => [Inline]  -- ^ Inlines to convert
                   -> LW m (Doc Text)
-inlineListToSile lst = hcat <$>
-  mapM inlineToSile (fixLineInitialSpaces $ lst)
+inlineListToSILE lst = hcat <$>
+  mapM inlineToSILE (fixLineInitialSpaces $ lst)
  where fixLineInitialSpaces [] = []
        fixLineInitialSpaces (LineBreak : Str s : xs)
          | Just ('\160', _) <- T.uncons s
@@ -323,12 +323,12 @@ inlineListToSile lst = hcat <$>
                     in  replicate (T.length ys) hspace <> [Str zs]
        hspace = RawInline "sile" "\\nbsp{}" -- TODO: use U+00A0
 
--- | Convert inline element to Sile
-inlineToSile :: PandocMonad m
+-- | Convert inline element to SILE
+inlineToSILE :: PandocMonad m
               => Inline    -- ^ Inline to convert
               -> LW m (Doc Text)
-inlineToSile (Span (id',classes,kvs) ils) = do
-  content <- inlineListToSile ils
+inlineToSILE (Span (id',classes,kvs) ils) = do
+  content <- inlineListToSILE ils
   let classToCommand = [ "csl-no-emph", "csl-no-strong", "csl-no-smallcaps" ]
   let cmds = filter (`elem` classToCommand) classes
   let classes' = filter (`notElem` classToCommand) classes
@@ -337,85 +337,85 @@ inlineToSile (Span (id',classes,kvs) ils) = do
             then inOptCmd "Span" options content
             else inOptCmd "Span" options $ foldr inCmd content cmds
 
-inlineToSile (Emph lst) =
-  inCmd "Emph" <$> inlineListToSile lst
-inlineToSile (Strong lst) =
-  inCmd "Strong" <$> inlineListToSile lst
-inlineToSile (Strikeout lst) =
-  inCmd "Strikeout" <$> inlineListToSile lst
-inlineToSile (Superscript lst) =
-  inCmd "Superscript" <$> inlineListToSile lst
-inlineToSile (Subscript lst) =
-  inCmd "textsubscript" <$> inlineListToSile lst
-inlineToSile (SmallCaps lst) =
-  inCmd "SmallCaps" <$> inlineListToSile lst
-inlineToSile (Cite cits lst) = do
+inlineToSILE (Emph lst) =
+  inCmd "Emph" <$> inlineListToSILE lst
+inlineToSILE (Strong lst) =
+  inCmd "Strong" <$> inlineListToSILE lst
+inlineToSILE (Strikeout lst) =
+  inCmd "Strikeout" <$> inlineListToSILE lst
+inlineToSILE (Superscript lst) =
+  inCmd "Superscript" <$> inlineListToSILE lst
+inlineToSILE (Subscript lst) =
+  inCmd "textsubscript" <$> inlineListToSILE lst
+inlineToSILE (SmallCaps lst) =
+  inCmd "SmallCaps" <$> inlineListToSILE lst
+inlineToSILE (Cite cits lst) = do
   st <- get
   let opts = stOptions st
   case writerCiteMethod opts of
      Natbib   -> citationsToNatbib cits
-     _        -> inlineListToSile lst
+     _        -> inlineListToSILE lst
 
-inlineToSile (Code (_,_,_) str) = do
-  content <- liftM literal $ stringToSile TextString str
+inlineToSILE (Code (_,_,_) str) = do
+  content <- liftM literal $ stringToSILE TextString str
   return $ inCmd "code" content
-inlineToSile (Quoted SingleQuote lst) = do
+inlineToSILE (Quoted SingleQuote lst) = do
   opts <- gets stOptions
-  content <- inlineListToSile lst
+  content <- inlineListToSILE lst
   return $ if isEnabled Ext_smart opts
               then "‘" <> content <> "’"
               else "'" <> content <> "'"
-inlineToSile (Quoted DoubleQuote lst) = do
+inlineToSILE (Quoted DoubleQuote lst) = do
   opts <- gets stOptions
-  content <- inlineListToSile lst
+  content <- inlineListToSILE lst
   return $ if isEnabled Ext_smart opts
               then "“" <> content <> "”"
               else "\"" <> content <> "\""
-inlineToSile (Str str) = do
+inlineToSILE (Str str) = do
   setEmptyLine False
-  liftM literal $ stringToSile TextString str
-inlineToSile (Math _ str) = do
-  content <- liftM literal $ stringToSile TextString str
+  liftM literal $ stringToSILE TextString str
+inlineToSILE (Math _ str) = do
+  content <- liftM literal $ stringToSILE TextString str
   return $ inCmd "Math" content
-inlineToSile (RawInline _ str) = do
+inlineToSILE (RawInline _ str) = do
   setEmptyLine False
   return $ literal str
-inlineToSile LineBreak = return $ "\\hfill\\break" <> cr
-inlineToSile SoftBreak = do
+inlineToSILE LineBreak = return $ "\\hfill\\break" <> cr
+inlineToSILE SoftBreak = do
   wrapText <- gets (writerWrapText . stOptions)
   case wrapText of
        WrapAuto     -> return space
        WrapNone     -> return space
        WrapPreserve -> return cr
-inlineToSile Space = return space
-inlineToSile (Link (ident,classes,kvs) txt (src,_))
+inlineToSILE Space = return space
+inlineToSILE (Link (ident,classes,kvs) txt (src,_))
   | Just ('#', ident') <- T.uncons src = do
-      content <- inlineListToSile txt
+      content <- inlineListToSILE txt
       options <- toOptions ident' classes kvs
       return $ inOptCmd "pdf:link" options content
   | otherwise = do
-                content <- inlineListToSile txt
-                src' <- stringToSile URLString (escapeURI src)
+                content <- inlineListToSILE txt
+                src' <- stringToSILE URLString (escapeURI src)
                 options <- toOptions ident classes (kvs ++ [("src", src')])
                 return $ inOptCmd "href" options content
-inlineToSile il@(Image _ _ (src, _))
+inlineToSILE il@(Image _ _ (src, _))
   | Just _ <- T.stripPrefix "data:" src = do
   report $ InlineNotRendered il
   return empty
-inlineToSile (Image (ident,classes,kvs) txt (source, tit)) = do
+inlineToSILE (Image (ident,classes,kvs) txt (source, tit)) = do
   setEmptyLine False
   let source' = if isURI source
                    then source
                    else T.pack $ unEscapeString $ T.unpack source
-  source'' <- stringToSile URLString source'
+  source'' <- stringToSILE URLString source'
   let opts = kvs ++
               [("src", source'')] ++
               [("title", tit) | not (T.null tit)]
   options <- toOptions ident classes opts
   return $ inOptCmd "img" options empty
-inlineToSile (Note content) = do
+inlineToSILE (Note content) = do
   setEmptyLine False
-  contents' <- blockListToSile content
+  contents' <- blockListToSILE content
   let optnl = case reverse content of
                    (CodeBlock _ _ : _) -> cr
                    _                   -> empty
@@ -492,8 +492,8 @@ citeArguments p s k = do
             | isPunctuation x -> Str xs : r
           _ -> s
         _                -> s
-  pdoc <- inlineListToSile p
-  sdoc <- inlineListToSile s'
+  pdoc <- inlineListToSILE p
+  sdoc <- inlineListToSILE s'
   let optargs = case (isEmpty pdoc, isEmpty sdoc) of
                      (True, True ) -> empty
                      (True, False) -> brackets sdoc
