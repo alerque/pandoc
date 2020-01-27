@@ -7,7 +7,7 @@
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE ViewPatterns          #-}
 {- |
-   Module      : Text.Pandoc.Readers.Sile
+   Module      : Text.Pandoc.Readers.SILE
    Copyright   : Copyright (C) 2015-2020 Caleb Maclennan
    License     : GNU GPL, version 2 or above
 
@@ -15,12 +15,12 @@
    Stability   : alpha
    Portability : portable
 
-Conversion of Sile to 'Pandoc' document.
+Conversion of SILE to 'Pandoc' document.
 
 -}
-module Text.Pandoc.Readers.Sile (  readSile,
-                                   rawSileInline,
-                                   rawSileBlock,
+module Text.Pandoc.Readers.SILE (  readSILE,
+                                   rawSILEInline,
+                                   rawSILEBlock,
                                    inlineCommand,
                                    tokenize,
                                    untokenize
@@ -51,9 +51,9 @@ import Text.Pandoc.Logging
 import Text.Pandoc.Options
 import Text.Pandoc.Parsing hiding (blankline, many, mathDisplay, mathInline,
                             optional, space, spaces, withRaw, (<|>))
-import Text.Pandoc.Readers.Sile.Types (ExpansionPoint (..), Macro (..),
+import Text.Pandoc.Readers.SILE.Types (ExpansionPoint (..), Macro (..),
                                         ArgSpec (..), Tok (..), TokType (..))
-import Text.Pandoc.Readers.Sile.Parsing
+import Text.Pandoc.Readers.SILE.Parsing
 import Text.Pandoc.Shared
 import qualified Text.Pandoc.Translations as Translations
 import Text.Pandoc.Walk
@@ -66,20 +66,20 @@ import Safe
 -- import Text.Pandoc.Class (runIOorExplode, PandocIO)
 -- import Debug.Trace (traceShowId)
 
--- | Parse Sile from string and return 'Pandoc' document.
-readSile :: PandocMonad m
+-- | Parse SILE from string and return 'Pandoc' document.
+readSILE :: PandocMonad m
           => ReaderOptions -- ^ Reader options
           -> Text        -- ^ String to parse (assumes @'\n'@ line endings)
           -> m Pandoc
-readSile opts ltx = do
-  parsed <- runParserT parseSile def{ sOptions = opts } "source"
+readSILE opts ltx = do
+  parsed <- runParserT parseSILE def{ sOptions = opts } "source"
                (tokenize "source" (crFilter ltx))
   case parsed of
     Right result -> return result
     Left e       -> throwError $ PandocParsecError ltx e
 
-parseSile :: PandocMonad m => LP m Pandoc
-parseSile = do
+parseSILE :: PandocMonad m => LP m Pandoc
+parseSILE = do
   bs <- blocks
   eof
   st <- getState
@@ -116,7 +116,7 @@ resolveRefs _ x = x
 
 -- testParser :: LP PandocIO a -> Text -> IO a
 -- testParser p t = do
---   res <- runIOorExplode (runParserT p defaultSileState{
+--   res <- runIOorExplode (runParserT p defaultSILEState{
 --             sOptions = def{ readerExtensions =
 --               enableExtension Ext_raw_sile $
 --                 getDefaultExtensions "sile" }} "source" (tokenize "source" t))
@@ -125,20 +125,20 @@ resolveRefs _ x = x
 --        Right r -> return r
 
 
-rawSileBlock :: (PandocMonad m, HasMacros s, HasReaderOptions s)
+rawSILEBlock :: (PandocMonad m, HasMacros s, HasReaderOptions s)
               => ParserT Text s m Text
-rawSileBlock = do
+rawSILEBlock = do
   lookAhead (try (char '\\' >> letter))
   inp <- getInput
   let toks = tokenize "source" inp
-  snd <$> (rawSileParser toks False mempty blocks
-      <|> (rawSileParser toks True
+  snd <$> (rawSILEParser toks False mempty blocks
+      <|> (rawSILEParser toks True
              (do choice (map controlSeq
                    ["include", "input", "subfile", "usepackage"])
                  skipMany opt
                  braced
                  return mempty) blocks)
-      <|> rawSileParser toks True
+      <|> rawSILEParser toks True
            (environment <|> blockCommand)
            (mconcat <$> (many (block <|> beginOrEndCommand))))
 
@@ -156,17 +156,17 @@ beginOrEndCommand = try $ do
      else return $ rawBlock "sile"
                     (txt <> untokenize rawargs)
 
-rawSileInline :: (PandocMonad m, HasReaderOptions s)
+rawSILEInline :: (PandocMonad m, HasReaderOptions s)
                => ParserT Text s m Text
-rawSileInline = do
+rawSILEInline = do
   lookAhead (try (char '\\' >> letter))
   inp <- getInput
   let toks = tokenize "source" inp
   raw <- snd <$>
-          (   rawSileParser toks True
+          (   rawSILEParser toks True
               (mempty <$ (controlSeq "input" >> skipMany opt >> braced))
               inlines
-          <|> rawSileParser toks True (inlineEnvironment <|> inlineCommand')
+          <|> rawSILEParser toks True (inlineEnvironment <|> inlineCommand')
               inlines
           )
   finalbraces <- mconcat <$> many (try (string "{}")) -- see #5439
@@ -177,7 +177,7 @@ inlineCommand = do
   lookAhead (try (char '\\' >> letter))
   inp <- getInput
   let toks = tokenize "source" inp
-  fst <$> rawSileParser toks True (inlineEnvironment <|> inlineCommand')
+  fst <$> rawSILEParser toks True (inlineEnvironment <|> inlineCommand')
           inlines
 
 -- inline elements:

@@ -111,7 +111,7 @@ data Extension =
     | Ext_inline_code_attributes  -- ^ Allow attributes on inline code
     | Ext_inline_notes        -- ^ Pandoc-style inline notes
     | Ext_intraword_underscores  -- ^ Treat underscore inside word as literal
-    | Ext_sile_macros        -- ^ Parse Sile macro definitions (for math only)
+    | Ext_sile_macros        -- ^ Parse SILE macro definitions (for math only)
     | Ext_latex_macros        -- ^ Parse LaTeX macro definitions (for math only)
     | Ext_line_blocks         -- ^ RST style line blocks
     | Ext_link_attributes         -- ^ link and image attributes
@@ -133,7 +133,7 @@ data Extension =
     | Ext_pipe_tables         -- ^ Pipe tables (as in PHP markdown extra)
     | Ext_raw_attribute           -- ^ Allow explicit raw blocks/inlines
     | Ext_raw_html            -- ^ Allow raw HTML
-    | Ext_raw_sile            -- ^ Allow raw Sile
+    | Ext_raw_sile            -- ^ Allow raw SILE
     | Ext_raw_tex             -- ^ Allow raw TeX (other than math)
     | Ext_raw_markdown        -- ^ Parse markdown in ipynb as raw markdown
     | Ext_shortcut_reference_links -- ^ Shortcut reference links

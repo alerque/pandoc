@@ -18,7 +18,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 -}
 
 {- |
-   Module      : Text.Pandoc.Readers.Sile.Types
+   Module      : Text.Pandoc.Readers.SILE.Types
    Copyright   : Copyright (C) 2015-2018 Caleb Maclennan
    License     : GNU GPL, version 2 or above
 
@@ -26,9 +26,9 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
    Stability   : alpha
    Portability : portable
 
-Types for Sile tokens and macros.
+Types for SILE tokens and macros.
 -}
-module Text.Pandoc.Readers.Sile.Types ( Tok(..)
+module Text.Pandoc.Readers.SILE.Types ( Tok(..)
                                        , TokType(..)
                                        , Macro(..)
                                        , ArgSpec(..)

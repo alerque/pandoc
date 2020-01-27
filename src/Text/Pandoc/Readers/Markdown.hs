@@ -41,7 +41,7 @@ import Text.Pandoc.Parsing hiding (tableWith)
 import Text.Pandoc.Readers.HTML (htmlInBalanced, htmlTag, isBlockTag,
                                  isCommentTag, isInlineTag, isTextTag)
 import Text.Pandoc.Readers.LaTeX (applyMacros, rawLaTeXBlock, rawLaTeXInline)
-import Text.Pandoc.Readers.Sile (rawSileBlock, rawSileInline)
+import Text.Pandoc.Readers.SILE (rawSILEBlock, rawSILEInline)
 import Text.Pandoc.Shared
 import qualified Text.Pandoc.UTF8 as UTF8
 import Text.Pandoc.XML (fromEntities)
@@ -1073,7 +1073,7 @@ rawSilBlock :: PandocMonad m => MarkdownParser m (F Blocks)
 rawSilBlock = do
   guardEnabled Ext_raw_sile
   result <- (B.rawBlock "sile" . trim . T.concat <$>
-                many1 ((<>) <$> rawSileBlock <*> spnl'))
+                many1 ((<>) <$> rawSILEBlock <*> spnl'))
   return $ case B.toList result of
                 [RawBlock _ cs]
                   | T.all (`elem` [' ','\t','\n']) cs -> return mempty
@@ -1350,7 +1350,7 @@ pipeTableRow = try $ do
   skipMany spaceChar
   openPipe <- (True <$ char '|') <|> return False
   -- split into cells
-  let chunk = void (code <|> math <|> rawHtmlInline <|> escapedChar <|> rawLaTeXInline' <|> rawSileInline')
+  let chunk = void (code <|> math <|> rawHtmlInline <|> escapedChar <|> rawLaTeXInline' <|> rawSILEInline')
        <|> void (noneOf "|\n\r")
   let cellContents = withRaw (many chunk) >>=
         parseFromString' pipeTableCell . trim . snd
@@ -1476,7 +1476,7 @@ inline = choice [ whitespace
                 , escapedNewline
                 , escapedChar
                 , rawLaTeXInline'
-                , rawSileInline'
+                , rawSILEInline'
                 , exampleRef
                 , smart
                 , return . B.singleton <$> charRef
@@ -1921,12 +1921,12 @@ rawLaTeXInline' = try $ do
   s <- rawLaTeXInline
   return $ return $ B.rawInline "tex" s -- "tex" because it might be context
 
-rawSileInline' :: PandocMonad m => MarkdownParser m (F Inlines)
-rawSileInline' = try $ do
+rawSILEInline' :: PandocMonad m => MarkdownParser m (F Inlines)
+rawSILEInline' = try $ do
   guardEnabled Ext_raw_sile
   lookAhead (char '\\')
   notFollowedBy' rawConTeXtEnvironment
-  s <- rawSileInline
+  s <- rawSILEInline
   return $ return $ B.rawInline "sile" s
 
 rawConTeXtEnvironment :: PandocMonad m => ParserT Text st m Text

@@ -498,8 +498,6 @@ library
                    Text.Pandoc.Filter,
                    Text.Pandoc.Readers,
                    Text.Pandoc.Readers.HTML,
-                   Text.Pandoc.Readers.Sile,
-                   Text.Pandoc.Readers.Sile.Types,
                    Text.Pandoc.Readers.LaTeX,
                    Text.Pandoc.Readers.LaTeX.Types,
                    Text.Pandoc.Readers.Markdown,
@@ -518,6 +516,8 @@ library
                    Text.Pandoc.Readers.Textile,
                    Text.Pandoc.Readers.Native,
                    Text.Pandoc.Readers.Haddock,
+                   Text.Pandoc.Readers.SILE,
+                   Text.Pandoc.Readers.SILE.Types,
                    Text.Pandoc.Readers.TWiki,
                    Text.Pandoc.Readers.TikiWiki,
                    Text.Pandoc.Readers.Txt2Tags,
@@ -606,7 +606,6 @@ library
                    Text.Pandoc.Readers.Docx.Parse.Styles,
                    Text.Pandoc.Readers.Docx.Util,
                    Text.Pandoc.Readers.Docx.Fields,
-                   Text.Pandoc.Readers.Sile.Parsing,
                    Text.Pandoc.Readers.LaTeX.Parsing,
                    Text.Pandoc.Readers.LaTeX.Lang,
                    Text.Pandoc.Readers.LaTeX.SIunitx,
@@ -632,6 +631,7 @@ library
                    Text.Pandoc.Readers.Org.Shared,
                    Text.Pandoc.Readers.Metadata,
                    Text.Pandoc.Readers.Roff,
+                   Text.Pandoc.Readers.SILE.Parsing,
                    Text.Pandoc.Writers.Docx.StyleMap,
                    Text.Pandoc.Writers.Roff,
                    Text.Pandoc.Writers.Powerpoint.Presentation,
@@ -799,7 +799,6 @@ test-suite test-pandoc
                   Tests.Lua
                   Tests.Lua.Module
                   Tests.Shared
-                  Tests.Readers.Sile
                   Tests.Readers.LaTeX
                   Tests.Readers.HTML
                   Tests.Readers.JATS
@@ -820,6 +819,7 @@ test-suite test-pandoc
                   Tests.Readers.Org.Meta
                   Tests.Readers.Org.Shared
                   Tests.Readers.RST
+                  Tests.Readers.SILE
                   Tests.Readers.Docx
                   Tests.Readers.Odt
                   Tests.Readers.Txt2Tags

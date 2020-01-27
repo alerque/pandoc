@@ -4,7 +4,7 @@
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {- |
-   Module      : Text.Pandoc.Readers.Sile.Parsing
+   Module      : Text.Pandoc.Readers.SILE.Parsing
    Copyright   : Copyright (C) 2015-2020 Caleb Maclennan
    License     : GNU GPL, version 2 or above
 
@@ -12,17 +12,17 @@
    Stability   : alpha
    Portability : portable
 
-General parsing types and functions for Sile.
+General parsing types and functions for SILE.
 -}
-module Text.Pandoc.Readers.Sile.Parsing
+module Text.Pandoc.Readers.SILE.Parsing
   ( DottedNum(..)
   , renderDottedNum
   , incrementDottedNum
-  , SileState(..)
-  , defaultSileState
+  , SILEState(..)
+  , defaultSILEState
   , LP
   , withVerbatimMode
-  , rawSileParser
+  , rawSILEParser
   , tokenize
   , untokenize
   , untoken
@@ -85,7 +85,7 @@ import Text.Pandoc.Logging
 import Text.Pandoc.Options
 import Text.Pandoc.Parsing hiding (blankline, many, mathDisplay, mathInline,
                             space, spaces, withRaw, (<|>))
-import Text.Pandoc.Readers.Sile.Types ( Tok (..), TokType (..))
+import Text.Pandoc.Readers.SILE.Types ( Tok (..), TokType (..))
 import Text.Pandoc.Shared
 import Text.Parsec.Pos
 -- import Debug.Trace
@@ -103,7 +103,7 @@ incrementDottedNum level (DottedNum ns) = DottedNum $
        (x:xs) -> reverse (x+1 : xs)
        []     -> []  -- shouldn't happen
 
-data SileState = SileState{ sOptions       :: ReaderOptions
+data SILEState = SILEState{ sOptions       :: ReaderOptions
                             , sMeta          :: Meta
                             , sQuoteContext  :: QuoteContext
                             , sContainers    :: [Text]
@@ -122,8 +122,8 @@ data SileState = SileState{ sOptions       :: ReaderOptions
                             }
      deriving Show
 
-defaultSileState :: SileState
-defaultSileState = SileState{ sOptions       = def
+defaultSILEState :: SILEState
+defaultSILEState = SILEState{ sOptions       = def
                               , sMeta          = nullMeta
                               , sQuoteContext  = NoQuote
                               , sContainers    = []
@@ -141,7 +141,7 @@ defaultSileState = SileState{ sOptions       = def
                               , sExpanded      = False
                               }
 
-instance PandocMonad m => HasQuoteContext SileState m where
+instance PandocMonad m => HasQuoteContext SILEState m where
   getQuoteContext = sQuoteContext <$> getState
   withQuoteContext context parser = do
     oldState <- getState
@@ -152,32 +152,32 @@ instance PandocMonad m => HasQuoteContext SileState m where
     setState newState { sQuoteContext = oldQuoteContext }
     return result
 
-instance HasLogMessages SileState where
+instance HasLogMessages SILEState where
   addLogMessage msg st = st{ sLogMessages = msg : sLogMessages st }
   getLogMessages st = reverse $ sLogMessages st
 
-instance HasIdentifierList SileState where
+instance HasIdentifierList SILEState where
   extractIdentifierList     = sIdentifiers
   updateIdentifierList f st = st{ sIdentifiers = f $ sIdentifiers st }
 
-instance HasIncludeFiles SileState where
+instance HasIncludeFiles SILEState where
   getIncludeFiles = sContainers
   addIncludeFile f s = s{ sContainers = f : sContainers s }
   dropLatestIncludeFile s = s { sContainers = drop 1 $ sContainers s }
 
-instance HasReaderOptions SileState where
+instance HasReaderOptions SILEState where
   extractReaderOptions = sOptions
 
-instance HasMeta SileState where
+instance HasMeta SILEState where
   setMeta field val st =
     st{ sMeta = setMeta field val $ sMeta st }
   deleteMeta field st =
     st{ sMeta = deleteMeta field $ sMeta st }
 
-instance Default SileState where
-  def = defaultSileState
+instance Default SILEState where
+  def = defaultSILEState
 
-type LP m = ParserT [Tok] SileState m
+type LP m = ParserT [Tok] SILEState m
 
 withVerbatimMode :: PandocMonad m => LP m a -> LP m a
 withVerbatimMode parser = do
@@ -190,10 +190,10 @@ withVerbatimMode parser = do
        updateState $ \st -> st{ sVerbatimMode = False }
        return result
 
-rawSileParser :: (PandocMonad m, HasReaderOptions s)
+rawSILEParser :: (PandocMonad m, HasReaderOptions s)
                => [Tok] -> Bool -> LP m a -> LP m a
                -> ParserT Text s m (a, Text)
-rawSileParser toks retokenize parser valParser = do
+rawSILEParser toks retokenize parser valParser = do
   pstate <- getState
   let lstate = def{ sOptions = extractReaderOptions pstate }
   let lstate' = lstate
