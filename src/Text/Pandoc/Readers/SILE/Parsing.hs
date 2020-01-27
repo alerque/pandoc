@@ -69,7 +69,6 @@ module Text.Pandoc.Readers.SILE.Parsing
 import Prelude
 import Control.Applicative (many, (<|>))
 import Control.Monad
-import Control.Monad.Except (throwError)
 import Control.Monad.Trans (lift)
 import Data.Char (chr, isAlphaNum, isDigit, isLetter, ord)
 import Data.Default
@@ -80,7 +79,6 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Text.Pandoc.Builder
 import Text.Pandoc.Class (PandocMonad, report)
-import Text.Pandoc.Error (PandocError (PandocMacroLoop))
 import Text.Pandoc.Logging
 import Text.Pandoc.Options
 import Text.Pandoc.Parsing hiding (blankline, many, mathDisplay, mathInline,
