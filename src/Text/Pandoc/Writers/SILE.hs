@@ -203,9 +203,8 @@ blockToSILE (Para lst) =
 blockToSILE (LineBlock lns) =
   blockToSILE $ linesToPara lns
 blockToSILE (BlockQuote lst) = do
-  let options = []
   content <- blockListToSILE lst
-  return $ inOptEnv "quote" options content
+  return $ inOptEnv "BlockQuote" [] content
 blockToSILE (CodeBlock (ident,classes,kvs) str) = do
   options <- toOptions ident classes kvs
   content <- liftM literal $ stringToSILE CodeString str
@@ -220,7 +219,7 @@ blockToSILE (BulletList []) = return empty  -- otherwise sile error
 blockToSILE (BulletList lst) = do
   items <- mapM listItemToSILE lst
   let content = vcat items
-  return $ inOptEnv "listarea" [] content
+  return $ inOptEnv "BulletList" [] content
 blockToSILE (OrderedList _ []) = return empty -- otherwise error
 blockToSILE (OrderedList (start, numstyle, _) lst) = do
   st <- get

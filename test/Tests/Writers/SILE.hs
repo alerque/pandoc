@@ -34,7 +34,11 @@ infix 4 =:
 (=:) = test sile
 
 tests :: [TestTree]
-tests = [testGroup "code blocks"
+tests = [testGroup "BlockQuote"
+          [ "in footnotes" =: blockQuote (para "foo") =?>
+            "\\begin{BlockQuote}\nfoo\n\\end{BlockQuote}"
+          ]
+        ,testGroup "code blocks"
           [ "in footnotes" =: note (para "hi" <> codeBlock "hi") =?>
             "\\footnote{hi\n\n  \\begin{verbatim}\n  hi\n  \\end{verbatim}\n}"
           ]
@@ -50,7 +54,7 @@ tests = [testGroup "code blocks"
             "\\section[id=foo,classes=\"unnumbered\",level=1]{Header 1\\footnote{note}}"
           , "in list item" =:
             bulletList [header 2 (text "foo")] =?>
-            "\\begin{listarea}\n\\listitem{\\subsection[level=2]{foo}}\n\\end{listarea}"
+            "\\begin{BulletList}\n\\listitem{\\subsection[level=2]{foo}}\n\\end{BulletList}"
           , "in definition list item" =:
             definitionList [(text "foo", [header 2 (text "bar"),
                                           para $ text "baz"])] =?>
