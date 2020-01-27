@@ -34,6 +34,7 @@ module Text.Pandoc.Readers
   , readRST
   , readOrg
   , readLaTeX
+  , readSILE
   , readHtml
   , readJATS
   , readJira
@@ -91,6 +92,7 @@ import Text.Pandoc.Readers.Odt
 import Text.Pandoc.Readers.OPML
 import Text.Pandoc.Readers.Org
 import Text.Pandoc.Readers.RST
+import Text.Pandoc.Readers.SILE
 import Text.Pandoc.Readers.Textile
 import Text.Pandoc.Readers.TikiWiki
 import Text.Pandoc.Readers.TWiki
@@ -131,6 +133,7 @@ readers = [ ("native"       , TextReader readNative)
            ,("jats"         , TextReader readJATS)
            ,("jira"         , TextReader readJira)
            ,("latex"        , TextReader readLaTeX)
+           ,("sile"         , TextReader readSILE)
            ,("haddock"      , TextReader readHaddock)
            ,("twiki"        , TextReader readTWiki)
            ,("tikiwiki"     , TextReader readTikiWiki)

@@ -828,6 +828,7 @@ test-suite test-pandoc
                   Tests.Readers.Creole
                   Tests.Readers.Man
                   Tests.Readers.FB2
+                  Tests.Readers.SILE
                   Tests.Readers.DokuWiki
                   Tests.Writers.Native
                   Tests.Writers.ConTeXt
