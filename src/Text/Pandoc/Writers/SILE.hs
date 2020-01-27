@@ -274,11 +274,8 @@ defListItemToSILE :: PandocMonad m => ([Inline], [[Block]]) -> LW m (Doc Text)
 defListItemToSILE (term, defs) = do
     term' <- inlineListToSILE term
     def'  <- liftM vsep $ mapM blockListToSILE defs
-    return $ case defs of
-     ((Header{} : _) : _) ->
-       "\\listitem" <> braces term' <> " ~ " $$ def'
-     _                          ->
-       "\\listitem" <> braces term' $$ def'
+    return $ inCmd "term" term' $$
+             inCmd "definition" def'
 
 sectionHeader :: PandocMonad m
               => [Text]  -- classes
@@ -404,6 +401,7 @@ inlineToSILE il@(Image _ _ (src, _))
   return empty
 inlineToSILE (Image (ident,classes,kvs) txt (source, tit)) = do
   setEmptyLine False
+  content <- inlineListToSILE txt
   let source' = if isURI source
                    then source
                    else T.pack $ unEscapeString $ T.unpack source
@@ -412,7 +410,7 @@ inlineToSILE (Image (ident,classes,kvs) txt (source, tit)) = do
               [("src", source'')] ++
               [("title", tit) | not (T.null tit)]
   options <- toOptions ident classes opts
-  return $ inOptCmd "img" options empty
+  return $ inOptCmd "img" options content
 inlineToSILE (Note content) = do
   setEmptyLine False
   contents' <- blockListToSILE content
