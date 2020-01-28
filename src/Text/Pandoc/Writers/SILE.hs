@@ -268,8 +268,8 @@ defListItemToSILE :: PandocMonad m => ([Inline], [[Block]]) -> LW m (Doc Text)
 defListItemToSILE (term, defs) = do
     term' <- inlineListToSILE term
     def'  <- liftM vsep $ mapM blockListToSILE defs
-    return $ inCmd "term" term' $$
-             inCmd "definition" def'
+    return $ inCmd "ListItemTerm" term' $$
+             inCmd "ListItemDefinition" def'
 
 sectionHeader :: PandocMonad m
               => [Text]  -- classes
@@ -349,7 +349,7 @@ inlineToSILE (Cite cits lst) = do
 
 inlineToSILE (Code (_,_,_) str) = do
   content <- liftM literal $ stringToSILE TextString str
-  return $ inCmd "code" content
+  return $ inCmd "Code" content
 inlineToSILE (Quoted SingleQuote lst) = do
   opts <- gets stOptions
   content <- inlineListToSILE lst
@@ -383,12 +383,12 @@ inlineToSILE (Link (ident,classes,kvs) txt (src,_))
   | Just ('#', ident') <- T.uncons src = do
       content <- inlineListToSILE txt
       options <- toOptions ident' classes kvs
-      return $ inOptCmd "pdf:link" options content
+      return $ inOptCmd "Link" options content
   | otherwise = do
                 content <- inlineListToSILE txt
                 src' <- stringToSILE URLString (escapeURI src)
                 options <- toOptions ident classes (kvs ++ [("src", src')])
-                return $ inOptCmd "href" options content
+                return $ inOptCmd "Link" options content
 inlineToSILE il@(Image _ _ (src, _))
   | Just _ <- T.stripPrefix "data:" src = do
   report $ InlineNotRendered il
@@ -404,7 +404,7 @@ inlineToSILE (Image (ident,classes,kvs) txt (source, tit)) = do
               [("src", source'')] ++
               [("title", tit) | not (T.null tit)]
   options <- toOptions ident classes opts
-  return $ inOptCmd "img" options content
+  return $ inOptCmd "Image" options content
 inlineToSILE (Note content) = do
   setEmptyLine False
   contents' <- blockListToSILE content
@@ -412,7 +412,7 @@ inlineToSILE (Note content) = do
                    (CodeBlock _ _ : _) -> cr
                    _                   -> empty
   let noteContents = nest 2 contents' <> optnl
-  return $ "\\footnote" <> braces noteContents
+  return $ inCmd "Note" noteContents
 
 setEmptyLine :: PandocMonad m => Bool -> LW m ()
 setEmptyLine b = modify $ \st -> st{ stEmptyLine = b }

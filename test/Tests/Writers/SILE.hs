@@ -48,10 +48,10 @@ tests = [testGroup "BlockQuote"
           , "with id" =: codeBlockWith ("bar", ["stuff"], []) "foo" =?>
             "\\begin[id=bar,classes=\"stuff\"]{CodeBlock}\nfoo\n\\end{CodeBlock}"
           ]
-        , testGroup "definition lists"
+        , testGroup "DefinitionList"
           [ "with internal link" =: definitionList [(link "#go" "" (str "testing"),
              [plain (text "hi there")])] =?>
-            "\\begin[tight=true]{DefinitionList}\n\\term{\\pdf:link[id=go]{testing}}\n\\definition{hi there}\n\\end{DefinitionList}"
+            "\\begin[tight=true]{DefinitionList}\n\\ListItemTerm{\\Link[id=go]{testing}}\n\\ListItemDefinition{hi there}\n\\end{DefinitionList}"
           ]
         , testGroup "Header"
           [ "chapter" =: header 0 (text "foo") =?>
@@ -65,14 +65,14 @@ tests = [testGroup "BlockQuote"
           , "unnumbered with id note" =:
             headerWith ("foo", ["unnumbered"], []) 1
               (text "foo" <> note (plain $ text "bar")) =?>
-            "\\Header[id=foo,classes=\"unnumbered\",level=1,type=section]{foo\\footnote{bar}}"
+            "\\Header[id=foo,classes=\"unnumbered\",level=1,type=section]{foo\\Note{bar}}"
           , "in list item" =: bulletList [header 2 (text "foo")] =?>
             "\\begin{BulletList}\n\\ListItem{\\Header[level=2,type=subsection]{foo}}\n\\end{BulletList}"
           , "in definition list item" =:
             definitionList [(text "foo", [header 2 (text "bar"),
                                           para $ text "baz"])] =?>
-            "\\begin{DefinitionList}\n\\term{foo}\n\\definition{\\Header[level=2,type=subsection]{bar}\n\nbaz}\n\\end{DefinitionList}"
+            "\\begin{DefinitionList}\n\\ListItemTerm{foo}\n\\ListItemDefinition{\\Header[level=2,type=subsection]{bar}\n\nbaz}\n\\end{DefinitionList}"
           , "containing image" =: header 1 (image "imgs/foo.jpg" "" (text "Alt text")) =?>
-            "\\Header[level=1,type=section]{\\img[src=imgs/foo.jpg]{Alt text}}"
+            "\\Header[level=1,type=section]{\\Image[src=imgs/foo.jpg]{Alt text}}"
           ]
         ]
