@@ -7,15 +7,8 @@ GHCOPTS=-fdiagnostics-color=always
 WEBSITE=../../web/pandoc.org
 REVISION?=1
 
-sile_install: /usr/local/bin/pandoc
-
-/usr/local/bin/pandoc: $(HOME)/.local/bin/pandoc
-	sudo cp $< /usr/local/bin/
-
-$(HOME)/.local/bin/pandoc: quick
-
 quick:
-	stack install --ghc-options='$(GHCOPTS)' --install-ghc --flag 'pandoc:embed_data_files' --fast
+	stack install --ghc-options='$(GHCOPTS)' --install-ghc --flag 'pandoc:embed_data_files' --fast --test --ghc-options='-j +RTS -A64m -RTS' --test-arguments='-j4 --hide-successes $(TESTARGS)'
 
 quick-cabal:
 	cabal new-configure . --ghc-options '$(GHCOPTS)' --disable-optimization --enable-tests
@@ -28,7 +21,7 @@ full-cabal:
 	cabal new-run test-pandoc --disable-optimization -- --hide-successes $(TESTARGS)
 
 full:
-	stack install --flag 'pandoc:embed_data_files' --flag 'pandoc:trypandoc' --bench --no-run-benchmarks --ghc-options '-Wall -Werror -fno-warn-unused-do-bind -O0 -j4 $(GHCOPTS)'
+	stack install --flag 'pandoc:embed_data_files' --flag 'pandoc:trypandoc' --bench --no-run-benchmarks --test --test-arguments='-j4 --hide-successes' --ghc-options '-Wall -Werror -fno-warn-unused-do-bind -O0 -j4 $(GHCOPTS)'
 
 ghci:
 	stack ghci --flag 'pandoc:embed_data_files'
