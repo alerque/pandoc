@@ -26,7 +26,7 @@ import Text.Pandoc.Builder
 import Text.Pandoc.Class.PandocMonad (PandocMonad, report)
 import Text.Pandoc.Options
 import Text.Pandoc.Logging (LogMessage(..))
-import Text.Pandoc.Shared (crFilter, safeRead)
+import Text.Pandoc.Shared (crFilter, safeRead, extractSpaces)
 import Text.TeXMath (readMathML, writeTeX)
 import Text.XML.Light
 
@@ -44,7 +44,7 @@ List of all DocBook tags, with [x] indicating implemented,
 [o] address - A real-world address, generally a postal address
 [ ] affiliation - The institutional affiliation of an individual
 [ ] alt - Text representation for a graphical element
-[o] anchor - A spot in the document
+[x] anchor - A spot in the document
 [x] answer - An answer to a question posed in a QandASet
 [x] appendix - An appendix in a Book or Article
 [x] appendixinfo - Meta-information for an Appendix
@@ -72,7 +72,7 @@ List of all DocBook tags, with [x] indicating implemented,
 [ ] bibliographyinfo - Meta-information for a Bibliography
 [ ] biblioid - An identifier for a document
 [o] bibliolist - A wrapper for a set of bibliography entries
-[ ] bibliomisc - Untyped bibliographic information
+[x] bibliomisc - Untyped bibliographic information
 [x] bibliomixed - An entry in a Bibliography
 [ ] bibliomset - A cooked container for related bibliographic information
 [ ] biblioref - A cross reference to a bibliographic entry
@@ -644,6 +644,7 @@ blockTags =
   , "bibliodiv"
   , "biblioentry"
   , "bibliography"
+  , "bibliomisc"
   , "bibliomixed"
   , "blockquote"
   , "book"
@@ -781,8 +782,8 @@ parseBlock (Elem e) =
         "para"  -> parseMixed para (elContent e)
         "formalpara" -> do
            tit <- case filterChild (named "title") e of
-                        Just t  -> para . strong . (<> str ".") <$>
-                                     getInlines t
+                        Just t  -> divWith ("",["formalpara-title"],[]) .
+                                   para .  strong <$> getInlines t
                         Nothing -> return mempty
            (tit <>) <$> parseMixed para (elContent e)
         "simpara"  -> parseMixed para (elContent e)
@@ -793,8 +794,12 @@ parseBlock (Elem e) =
         "titleabbrev" -> skip
         "authorinitials" -> skip
         "bibliography" -> sect 0
-        "bibliodiv" -> sect 1
+        "bibliodiv" ->
+          case filterChild (named "title") e of
+            Just _  -> sect 1
+            Nothing -> return mempty
         "biblioentry" -> parseMixed para (elContent e)
+        "bibliomisc" -> parseMixed para (elContent e)
         "bibliomixed" -> parseMixed para (elContent e)
         "equation"         -> para <$> equation e displayMath
         "informalequation" -> para <$> equation e displayMath
@@ -1041,7 +1046,7 @@ parseEntry cn el = do
           _ -> 1
   let colSpan = toColSpan el
   let align = toAlignment el
-  (fmap (cell align 1 colSpan) . (parseMixed plain) . elContent) el
+  (fmap (cell align 1 colSpan) . parseMixed plain . elContent) el
 
 getInlines :: PandocMonad m => Element -> DB m Inlines
 getInlines e' = trimInlines . mconcat <$>
@@ -1061,23 +1066,25 @@ parseInline (CRef ref) =
   return $ text $ maybe (T.toUpper $ T.pack ref) T.pack $ lookupEntity ref
 parseInline (Elem e) =
   case qName (elName e) of
+        "anchor" -> do
+           return $ spanWith (attrValue "id" e, [], []) mempty
         "phrase" -> do
           let ident = attrValue "id" e
           let classes = T.words $ attrValue "class" e
           if ident /= "" || classes /= []
-            then spanWith (ident,classes,[]) <$> innerInlines
-            else innerInlines
+            then innerInlines (spanWith (ident,classes,[]))
+            else innerInlines id
         "equation" -> equation e displayMath
         "informalequation" -> equation e displayMath
         "inlineequation" -> equation e math
-        "subscript" -> subscript <$> innerInlines
-        "superscript" -> superscript <$> innerInlines
+        "subscript" -> innerInlines subscript
+        "superscript" -> innerInlines superscript
         "inlinemediaobject" -> getMediaobject e
         "quote" -> do
             qt <- gets dbQuoteType
             let qt' = if qt == SingleQuote then DoubleQuote else SingleQuote
             modify $ \st -> st{ dbQuoteType = qt' }
-            contents <- innerInlines
+            contents <- innerInlines id
             modify $ \st -> st{ dbQuoteType = qt }
             return $ if qt == SingleQuote
                         then singleQuoted contents
@@ -1098,7 +1105,7 @@ parseInline (Elem e) =
         "replaceable" -> do x <- getInlines e
                             return $ str "<" <> x <> str ">"
         "markup" -> codeWithLang
-        "wordasword" -> emph <$> innerInlines
+        "wordasword" -> innerInlines emph
         "command" -> codeWithLang
         "varname" -> codeWithLang
         "function" -> codeWithLang
@@ -1126,21 +1133,21 @@ parseInline (Elem e) =
         "email" -> return $ link ("mailto:" <> T.pack (strContent e)) ""
                           $ str $ T.pack $ strContent e
         "uri" -> return $ link (T.pack $ strContent e) "" $ str $ T.pack $ strContent e
-        "ulink" -> link (attrValue "url" e) "" <$> innerInlines
+        "ulink" -> innerInlines (link (attrValue "url" e) "")
         "link" -> do
-             ils <- innerInlines
+             ils <- innerInlines id
              let href = case findAttr (QName "href" (Just "http://www.w3.org/1999/xlink") Nothing) e of
                                Just h -> T.pack h
                                _      -> "#" <> attrValue "linkend" e
              let ils' = if ils == mempty then str href else ils
              let attr = (attrValue "id" e, T.words $ attrValue "role" e, [])
              return $ linkWith attr href "" ils'
-        "foreignphrase" -> emph <$> innerInlines
+        "foreignphrase" -> innerInlines emph
         "emphasis" -> case attrValue "role" e of
-                             "bold"          -> strong <$> innerInlines
-                             "strong"        -> strong <$> innerInlines
-                             "strikethrough" -> strikeout <$> innerInlines
-                             _               -> emph <$> innerInlines
+                             "bold"          -> innerInlines strong
+                             "strong"        -> innerInlines strong
+                             "strikethrough" -> innerInlines strikeout
+                             _               -> innerInlines emph
         "footnote" -> note . mconcat <$>
                          mapM parseBlock (elContent e)
         "title" -> return mempty
@@ -1149,12 +1156,12 @@ parseInline (Elem e) =
         -- <?asciidor-br?> to in handleInstructions, above.  A kludge to
         -- work around xml-light's inability to parse an instruction.
         "br" -> return linebreak
-        _          -> skip >> innerInlines
+        _          -> skip >> innerInlines id
    where skip = do
            lift $ report $ IgnoredElement $ T.pack $ qName (elName e)
            return mempty
 
-         innerInlines = trimInlines . mconcat <$>
+         innerInlines f = extractSpaces f . mconcat <$>
                           mapM parseInline (elContent e)
          codeWithLang = do
            let classes' = case attrValue "language" e of

@@ -1,6 +1,7 @@
 ```
 % pandoc -f biblatex -t markdown -s
-@comment{excerpt from http://mirrors.ctan.org/macros/latex/contrib/biblatex/doc/examples/biblatex-examples.bib
+@comment{excerpt from
+http://mirrors.ctan.org/macros/latex/contrib/biblatex/doc/examples/biblatex-examples.bib}
 
 @periodical{jcg,
 	Annotation = {This is a periodical entry with an issn field.},
@@ -13,16 +14,16 @@
 
 ^D
 ---
-nocite: '[@*]'
+nocite: "[@*]"
 references:
 - annote: This is a periodical entry with an issn field.
   container-title: Computers and Graphics
   id: jcg
-  issn: '0097-8493'
+  issn: 0097-8493
   issue: 4
   issued: 2011
   title: Semantic 3D media and content
-  type: 'article-journal'
+  type: article-journal
   volume: 35
 ---
 

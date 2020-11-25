@@ -3,8 +3,7 @@ README.template and MANUAL.txt via the command:
 pandoc --lua-filter tools/update-readme.lua README.template -o README.md
 -->
 
-Pandoc
-======
+# Pandoc
 
 [![github
 release](https://img.shields.io/github/release/jgm/pandoc.svg?label=current+release)](https://github.com/jgm/pandoc/releases)
@@ -19,8 +18,7 @@ tests](https://github.com/jgm/pandoc/workflows/CI%20tests/badge.svg)](https://gi
 [![pandoc-discuss on google
 groups](https://img.shields.io/badge/pandoc-discuss-red.svg?style=social)](https://groups.google.com/forum/#!forum/pandoc-discuss)
 
-The universal markup converter
-------------------------------
+## The universal markup converter
 
 Pandoc is a [Haskell](http://haskell.org) library for converting from
 one markup format to another, and a command-line tool that uses this
@@ -28,10 +26,15 @@ library. It can convert *from*
 
 <div id="input-formats">
 
+-   `bibtex` ([BibTeX](https://ctan.org/pkg/bibtex) bibliography)
+-   `biblatex` ([BibLaTeX](https://ctan.org/pkg/biblatex) bibliography)
 -   `commonmark` ([CommonMark](https://commonmark.org) Markdown)
 -   `commonmark_x` ([CommonMark](https://commonmark.org) Markdown with
     extensions)
 -   `creole` ([Creole 1.0](http://www.wikicreole.org/wiki/Creole1.0))
+-   `csljson` ([CSL
+    JSON](https://citeproc-js.readthedocs.io/en/latest/csl-json/markup.html)
+    bibliography)
 -   `csv` ([CSV](https://tools.ietf.org/html/rfc4180) table)
 -   `docbook` ([DocBook](https://docbook.org))
 -   `docx` ([Word docx](https://en.wikipedia.org/wiki/Office_Open_XML))
@@ -96,6 +99,9 @@ It can convert *to*
 -   `commonmark_x` ([CommonMark](https://commonmark.org) Markdown with
     extensions)
 -   `context` ([ConTeXt](https://www.contextgarden.net/))
+-   `csljson` ([CSL
+    JSON](https://citeproc-js.readthedocs.io/en/latest/csl-json/markup.html)
+    bibliography)
 -   `docbook` or `docbook4` ([DocBook](https://docbook.org) 4)
 -   `docbook5` (DocBook 5)
 -   `docx` ([Word docx](https://en.wikipedia.org/wiki/Office_Open_XML))
@@ -209,13 +215,11 @@ While conversions from pandoc’s Markdown to all formats aspire to be
 perfect, conversions from formats more expressive than pandoc’s Markdown
 can be expected to be lossy.
 
-Installing
-----------
+## Installing
 
 Here’s [how to install pandoc](INSTALL.md).
 
-Documentation
--------------
+## Documentation
 
 Pandoc’s website contains a full [User’s
 Guide](https://pandoc.org/MANUAL.html). It is also available
@@ -224,15 +228,13 @@ contains some [examples of the use of
 pandoc](https://pandoc.org/demos.html) and a limited [online
 demo](https://pandoc.org/try).
 
-Contributing
-------------
+## Contributing
 
 Pull requests, bug reports, and feature requests are welcome. Please
 make sure to read [the contributor guidelines](CONTRIBUTING.md) before
 opening a new issue.
 
-License
--------
+## License
 
 © 2006-2020 John MacFarlane (jgm@berkeley.edu). Released under the
 [GPL](http://www.gnu.org/copyleft/gpl.html "GNU General Public License"),

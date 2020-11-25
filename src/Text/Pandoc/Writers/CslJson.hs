@@ -34,21 +34,22 @@ import Control.Monad.Identity
 import Citeproc.Locale (getLocale)
 import Citeproc.CslJson
 import Text.Pandoc.Options (WriterOptions)
-import Data.Maybe (fromMaybe, mapMaybe)
+import Data.Maybe (mapMaybe)
 import Data.Aeson.Encode.Pretty         (Config (..), Indent (Spaces),
                                          NumberFormat (Generic),
                                          defConfig, encodePretty')
 
 writeCslJson :: PandocMonad m => WriterOptions -> Pandoc -> m Text
 writeCslJson _opts (Pandoc meta _) = do
-  let lang = fromMaybe (Lang "en" (Just "US")) $
-              parseLang <$> (lookupMeta "lang" meta >>= metaValueToText)
+  let lang = maybe (Lang "en" (Just "US")) parseLang
+               (lookupMeta "lang" meta >>= metaValueToText)
   locale <- case getLocale lang of
                Left e  -> throwError $ PandocCiteprocError e
                Right l -> return l
   case lookupMeta "references" meta of
     Just (MetaList rs) -> return $ (UTF8.toText $
-         toCslJson locale (mapMaybe metaValueToReference rs)) <> "\n"
+         toCslJson locale (mapMaybe metaValueToReference rs))
+          <> "\n"
     _ -> throwError $ PandocAppError "No references field"
 
 fromInlines :: [Inline] -> CslJson Text
@@ -76,6 +77,7 @@ fromInline (Image _ ils _) = fromInlines ils
 fromInline (Note _) = CslEmpty
 fromInline (Span (_,[cl],_) ils)
   | "csl-" `T.isPrefixOf` cl = CslDiv cl (fromInlines ils)
+  | cl == "nocase" = CslNoCase (fromInlines ils)
 fromInline (Span _ ils) = fromInlines ils
 
 toCslJson :: Locale -> [Reference Inlines] -> ByteString
@@ -83,5 +85,6 @@ toCslJson locale = toStrict .
   encodePretty' defConfig{ confIndent = Spaces 2
                          , confCompare = compare
                          , confNumFormat = Generic }
-  . map (runIdentity .  traverse (return . renderCslJson locale . foldMap fromInline))
-
+  . map (runIdentity .  traverse (return .
+                                  renderCslJson False locale .
+                                  foldMap fromInline))

@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE TupleSections       #-}
 {-# LANGUAGE PatternGuards       #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ViewPatterns        #-}
@@ -635,6 +636,8 @@ blockToLaTeX (CodeBlock (identifier,classes,keyvalAttr) str) = do
   let listingsCodeBlock = do
         st <- get
         ref <- toLabel identifier
+        kvs <- mapM (\(k,v) -> (k,) <$>
+                       stringToLaTeX TextString v) keyvalAttr
         let params = if writerListings (stOptions st)
                      then (case getListingsLanguage classes of
                                 Just l  -> [ "language=" <> mbBraced l ]
@@ -645,7 +648,7 @@ blockToLaTeX (CodeBlock (identifier,classes,keyvalAttr) str) = do
                           [ (if key == "startFrom"
                                 then "firstnumber"
                                 else key) <> "=" <> mbBraced attr |
-                                (key,attr) <- keyvalAttr,
+                                (key,attr) <- kvs,
                                 key `notElem` ["exports", "tangle", "results"]
                                 -- see #4889
                           ] ++
@@ -848,9 +851,6 @@ tableRowToLaTeX :: PandocMonad m
                 -> [[Block]]
                 -> LW m (Doc Text)
 tableRowToLaTeX header aligns widths cols = do
-  -- scale factor compensates for extra space between columns
-  -- so the whole table isn't larger than columnwidth
-  let scaleFactor = 0.97 ** fromIntegral (length aligns)
   let isSimple [Plain _] = True
       isSimple [Para  _] = True
       isSimple []        = True
@@ -858,9 +858,10 @@ tableRowToLaTeX header aligns widths cols = do
   -- simple tables have to have simple cells:
   let widths' = if all (== 0) widths && not (all isSimple cols)
                    then replicate (length aligns)
-                          (scaleFactor / fromIntegral (length aligns))
-                   else map (scaleFactor *) widths
-  cells <- mapM (tableCellToLaTeX header) $ zip3 widths' aligns cols
+                          (1 / fromIntegral (length aligns))
+                   else widths
+  let numcols = length widths'
+  cells <- mapM (tableCellToLaTeX header numcols) $ zip3 widths' aligns cols
   return $ hsep (intersperse "&" cells) <> "\\tabularnewline"
 
 -- For simple latex tables (without minipages or parboxes),
@@ -887,11 +888,12 @@ displayMathToInline :: Inline -> Inline
 displayMathToInline (Math DisplayMath x) = Math InlineMath x
 displayMathToInline x                    = x
 
-tableCellToLaTeX :: PandocMonad m => Bool -> (Double, Alignment, [Block])
+tableCellToLaTeX :: PandocMonad m
+                 => Bool -> Int -> (Double, Alignment, [Block])
                  -> LW m (Doc Text)
-tableCellToLaTeX _      (0,     _,     blocks) =
+tableCellToLaTeX _ _    (0,     _,     blocks) =
   blockListToLaTeX $ walk fixLineBreaks $ walk displayMathToInline blocks
-tableCellToLaTeX header (width, align, blocks) = do
+tableCellToLaTeX header numcols (width, align, blocks) = do
   beamer <- gets stBeamer
   externalNotes <- gets stExternalNotes
   inMinipage <- gets stInMinipage
@@ -909,9 +911,12 @@ tableCellToLaTeX header (width, align, blocks) = do
                AlignCenter  -> "\\centering"
                AlignDefault -> "\\raggedright"
   return $ "\\begin{minipage}" <> valign <>
-           braces (text (printf "%.2f\\columnwidth" width)) <>
+           braces (text (printf
+              "(\\columnwidth - %d\\tabcolsep) * \\real{%.2f}"
+              (numcols - 1) width)) <>
            halign <> cr <> cellContents <> "\\strut" <> cr <>
            "\\end{minipage}"
+-- (\columnwidth - 8\tabcolsep) * \real{0.15}
 
 notesToLaTeX :: [Doc Text] -> Doc Text
 notesToLaTeX [] = empty
@@ -1635,6 +1640,7 @@ toPolyglossia (Lang "grc" _ _ _)          = ("greek",   "variant=ancient")
 toPolyglossia (Lang "hsb" _ _  _)         = ("usorbian", "")
 toPolyglossia (Lang "la" _ _ vars)
   | "x-classic" `elem` vars               = ("latin", "variant=classic")
+toPolyglossia (Lang "pt" _ "BR" _)        = ("portuguese", "variant=brazilian")
 toPolyglossia (Lang "sl" _ _ _)           = ("slovenian", "")
 toPolyglossia x                           = (commonFromBcp47 x, "")
 
@@ -1669,6 +1675,7 @@ toBabel (Lang "grc" _ _ _)              = "polutonikogreek"
 toBabel (Lang "hsb" _ _ _)              = "uppersorbian"
 toBabel (Lang "la" _ _ vars)
   | "x-classic" `elem` vars             = "classiclatin"
+toBabel (Lang "pt" _ "BR" _)            = "brazilian"
 toBabel (Lang "sl" _ _ _)               = "slovene"
 toBabel x                               = commonFromBcp47 x
 
@@ -1676,9 +1683,6 @@ toBabel x                               = commonFromBcp47 x
 -- and converts it to a string shared by Babel and Polyglossia.
 -- https://tools.ietf.org/html/bcp47#section-2.1
 commonFromBcp47 :: Lang -> Text
-commonFromBcp47 (Lang "pt" _ "BR" _)            = "brazil"
--- Note: documentation says "brazilian" works too, but it doesn't seem to work
--- on some systems.  See #2953.
 commonFromBcp47 (Lang "sr" "Cyrl" _ _)          = "serbianc"
 commonFromBcp47 (Lang "zh" "Latn" _ vars)
   | "pinyin" `elem` vars                        = "pinyin"

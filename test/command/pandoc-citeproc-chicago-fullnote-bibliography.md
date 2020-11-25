@@ -49,14 +49,13 @@ References {#references .unnumbered}
     [-@item1], and now Doe with a locator [-@item2 p. 44].
 ^D
 [WARNING] Citeproc: citation nonexistent not found
-Pandoc with citeproc-hs
-=======================
+# Pandoc with citeproc-hs
 
 [^1]
 
 [^2]
 
-[Doe](#ref-item1)[^3] says blah.
+[John Doe](#ref-item1)[^3] says blah.
 
 [Doe](#ref-item1)[^4] says blah.
 
@@ -80,8 +79,7 @@ Now some modifiers.[^13]
 
 With some markup.[^14]
 
-References {#references .unnumbered}
-==========
+# References {#references .unnumbered}
 
 ::: {#refs .references .csl-bib-body .hanging-indent}
 ::: {#ref-item2 .csl-entry}
@@ -102,17 +100,19 @@ Sam Smith. Oxford: Oxford University Press, 2007.
 
 [^2]: [**Nonexistent?**](#ref-nonexistent)
 
-[^3]: [*First Book*, 2005](#ref-item1).
+[^3]: [*First Book* (Cambridge: Cambridge University Press,
+    2005)](#ref-item1).
 
-[^4]: [Ibid., 30](#ref-item1).
+[^4]: [30](#ref-item1).
 
-[^5]: [Ibid.](#ref-item1), with suffix.
+[^5]: [30](#ref-item1), with suffix.
 
-[^6]: [*First Book*, 2005](#ref-item1); ["Article," 2006,
-    30](#ref-item2); see also [Doe and Roe, "Why Water Is
-    Wet"](#ref-пункт3).
+[^6]: [*First Book*, 2005](#ref-item1); ["Article," *Journal of Generic
+    Studies* 6 (2006): 30](#ref-item2); see also [John Doe and Jenny
+    Roe, "Why Water Is Wet," in *Third Book*, ed. Sam Smith (Oxford:
+    Oxford University Press, 2007)](#ref-пункт3).
 
-[^7]: [Doe and Roe](#ref-пункт3) (["Why Water Is Wet," 12](#ref-пункт3))
+[^7]: [Doe and Roe](#ref-пункт3), ["Why Water Is Wet," 12](#ref-пункт3)
     and a citation without locators ([Doe and Roe, "Why Water Is
     Wet"](#ref-пункт3)).
 
@@ -121,7 +121,7 @@ Sam Smith. Oxford: Oxford University Press, 2007.
 
 [^9]: See [Doe, *First Book*, 2005, 34--35](#ref-item1).
 
-[^10]: Some citations (See [ibid., chap. 3](#ref-item1); [Doe and Roe,
+[^10]: Some citations (see [Doe, chap. 3](#ref-item1); [Doe and Roe,
     "Why Water Is Wet"](#ref-пункт3); [Doe, "Article,"
     2006](#ref-item2)).
 
@@ -130,9 +130,8 @@ Sam Smith. Oxford: Oxford University Press, 2007.
 
 [^12]: [Doe, *First Book*, 2005](#ref-item1) and nowhere else.
 
-[^13]: Like a citation without author: ([Ibid.](#ref-item1)), and again
-    ([Ibid.](#ref-item1)), and now Doe with a locator (["Article," 2006,
-    44](#ref-item2)).
+[^13]: Like a citation without author: (), and again (), and now Doe
+    with a locator (["Article," 2006, 44](#ref-item2)).
 
 [^14]: *See* [Doe, *First Book*, 2005, 32](#ref-item1).
 ```

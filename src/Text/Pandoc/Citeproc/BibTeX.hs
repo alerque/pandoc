@@ -38,7 +38,7 @@ import           Data.Text              (Text)
 import qualified Data.Text              as T
 import qualified Data.Map               as Map
 import           Data.Maybe
-import Text.Parsec hiding (State, many, (<|>))
+import           Text.Pandoc.Parsing hiding ((<|>), many)
 import           Control.Applicative
 import           Data.List.Split        (splitOn, splitWhen, wordsBy)
 import           Control.Monad.RWS      hiding ((<>))
@@ -61,7 +61,8 @@ readBibtexString :: Variant           -- ^ bibtex or biblatex
 readBibtexString variant locale idpred contents = do
   case runParser (((resolveCrossRefs variant <$> bibEntries) <* eof) >>=
                    mapM (itemToReference locale variant) .
-                      filter (idpred . identifier))
+                      filter (\item -> idpred (identifier item) &&
+                                        entryType item /= "xdata"))
            (fromMaybe defaultLang $ localeLanguage locale, Map.empty)
            "" contents of
           Left err -> Left err
@@ -73,7 +74,7 @@ defaultLang = Lang "en" (Just "US")
 -- a map of bibtex "string" macros
 type StringMap = Map.Map Text Text
 
-type BibParser = Parsec Text (Lang, StringMap)
+type BibParser = Parser Text (Lang, StringMap)
 
 data Item = Item{ identifier :: Text
                 , sourcePos  :: SourcePos
@@ -571,7 +572,7 @@ bibEntries = do
                        (bibComment <|> bibPreamble <|> bibString))
 
 bibSkip :: BibParser ()
-bibSkip = skipMany1 (satisfy (/='@'))
+bibSkip = () <$ take1WhileP (/='@')
 
 bibComment :: BibParser ()
 bibComment = do
@@ -597,7 +598,7 @@ bibString = do
   return ()
 
 inBraces :: BibParser Text
-inBraces = try $ do
+inBraces = do
   char '{'
   res <- manyTill
          (  (T.pack <$> many1 (noneOf "{}\\"))
@@ -621,8 +622,9 @@ inQuotes = do
             ) (char '"')
 
 fieldName :: BibParser Text
-fieldName = resolveAlias . T.toLower . T.pack
-  <$> many1 (letter <|> digit <|> oneOf "-_:+")
+fieldName = resolveAlias . T.toLower
+  <$> take1WhileP (\c ->
+         isAlphaNum c || c == '-' || c == '_' || c == ':' || c == '+')
 
 isBibtexKeyChar :: Char -> Bool
 isBibtexKeyChar c =
@@ -632,18 +634,18 @@ bibItem :: BibParser Item
 bibItem = do
   char '@'
   pos <- getPosition
-  enttype <- map toLower <$> many1 letter
+  enttype <- T.toLower <$> take1WhileP isLetter
   spaces
   char '{'
   spaces
-  entid <- many1 (satisfy isBibtexKeyChar)
+  entid <- take1WhileP isBibtexKeyChar
   spaces
   char ','
   spaces
   entfields <- entField `sepEndBy` (char ',' >> spaces)
   spaces
   char '}'
-  return $ Item (T.pack entid) pos (T.pack enttype) (Map.fromList entfields)
+  return $ Item entid pos enttype (Map.fromList entfields)
 
 entField :: BibParser (Text, Text)
 entField = do
@@ -662,7 +664,7 @@ resolveAlias "primaryclass" = "eprintclass"
 resolveAlias s = s
 
 rawWord :: BibParser Text
-rawWord = T.pack <$> many1 alphaNum
+rawWord = take1WhileP isAlphaNum
 
 expandString :: BibParser Text
 expandString = do
@@ -1057,7 +1059,6 @@ getTypeAndGenre :: Bib (Text, Maybe Text)
 getTypeAndGenre = do
   lang <- gets localeLang
   et <- asks entryType
-  guard $ et /= "xdata"
   reftype' <- resolveKey' lang <$> getRawField "type"
          <|> return mempty
   st <- getRawField "entrysubtype" <|> return mempty

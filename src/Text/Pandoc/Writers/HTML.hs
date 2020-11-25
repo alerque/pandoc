@@ -314,7 +314,7 @@ pandocToHtml opts (Pandoc meta blocks) = do
                           "/*]]>*/\n")
                           | otherwise -> mempty
                     Nothing -> mempty
-  let mCss :: Maybe [Text] = lookupContext "css" $ metadata
+  let mCss :: Maybe [Text] = lookupContext "css" metadata
   let context =   (if stHighlighting st
                       then case writerHighlightStyle opts of
                                 Just sty -> defField "highlighting-css"
@@ -1089,16 +1089,18 @@ tableRowToHtml :: PandocMonad m
                -> TableRow
                -> StateT WriterState m Html
 tableRowToHtml opts (TableRow tblpart attr rownum rowhead rowbody) = do
-  let rowclass = A.class_ $ case rownum of
+  let rowclass = case rownum of
         Ann.RowNumber x | x `rem` 2 == 1   -> "odd"
         _               | tblpart /= Thead -> "even"
         _                                  -> "header"
+  let attr' = case attr of
+                (id', classes, rest) -> (id', rowclass:classes, rest)
   let celltype = case tblpart of
                    Thead -> HeaderCell
                    _     -> BodyCell
   headcells <- mapM (cellToHtml opts HeaderCell) rowhead
   bodycells <- mapM (cellToHtml opts celltype) rowbody
-  rowHtml <- addAttrs opts attr $ H.tr ! rowclass $ do
+  rowHtml <- addAttrs opts attr' $ H.tr $ do
     nl opts
     mconcat headcells
     mconcat bodycells
@@ -1288,8 +1290,9 @@ inlineToHtml opts inline = do
                                         | any ((=="cite") . fst) kvs
                                           -> (Just attr, cs)
                                       cs -> (Nothing, cs)
-                                 H.q `fmap` inlineListToHtml opts lst'
-                                   >>= maybe return (addAttrs opts) maybeAttr
+                                 let addAttrsMb = maybe return (addAttrs opts)
+                                 inlineListToHtml opts lst' >>=
+                                   addAttrsMb maybeAttr . H.q
                                else (\x -> leftQuote >> x >> rightQuote)
                                     `fmap` inlineListToHtml opts lst
     (Math t str) -> do
@@ -1466,8 +1469,8 @@ cslEntryToHtml :: PandocMonad m
 cslEntryToHtml opts (Para xs) = do
   html5 <- gets stHtml5
   let inDiv :: Text -> Html -> Html
-      inDiv cls x = ((if html5 then H5.div else H.div)
-                      x ! A.class_ (toValue cls))
+      inDiv cls x = (if html5 then H5.div else H.div)
+                      x ! A.class_ (toValue cls)
   let go (Span ("",[cls],[]) ils)
         | cls == "csl-block" || cls == "csl-left-margin" ||
           cls == "csl-right-inline" || cls == "csl-indent"

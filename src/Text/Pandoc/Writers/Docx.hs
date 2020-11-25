@@ -3,6 +3,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ViewPatterns        #-}
 {-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {- |
    Module      : Text.Pandoc.Writers.Docx
@@ -1087,11 +1088,20 @@ listItemToOpenXML _ _ []                   = return []
 listItemToOpenXML opts numid (first:rest) = do
   oldInList <- gets stInList
   modify $ \st -> st{ stInList = True }
-  first' <- withNumId numid $ blockToOpenXML opts first
+  let isListBlock = \case
+        BulletList{}  -> True
+        OrderedList{} -> True
+        _             -> False
+  -- Prepend an empty string if the first entry is another
+  -- list. Otherwise the outer bullet will disappear.
+  let (first', rest') = if isListBlock first
+                           then (Plain [Str ""] , first:rest)
+                           else (first, rest)
+  first'' <- withNumId numid $ blockToOpenXML opts first'
   -- baseListId is the code for no list marker:
-  rest'  <- withNumId baseListId $ blocksToOpenXML opts rest
+  rest''  <- withNumId baseListId $ blocksToOpenXML opts rest'
   modify $ \st -> st{ stInList = oldInList }
-  return $ first' ++ rest'
+  return $ first'' ++ rest''
 
 alignmentToString :: Alignment -> [Char]
 alignmentToString alignment = case alignment of
@@ -1234,33 +1244,29 @@ inlineToOpenXML' opts (Span (ident,classes,kvs) ils) = do
                   else id)
       getChangeAuthorDate = do
         defaultAuthor <- asks envChangesAuthor
-        defaultDate <- asks envChangesDate
         let author = fromMaybe defaultAuthor (lookup "author" kvs)
-            date   = fromMaybe defaultDate (lookup "date" kvs)
-        return (author, date)
+        let mdate = lookup "date" kvs
+        return $ ("w:author", T.unpack author) :
+                   maybe [] (\date -> [("w:date", T.unpack date)]) mdate
   insmod <- if "insertion" `elem` classes
                then do
-                 (author, date) <- getChangeAuthorDate
+                 changeAuthorDate <- getChangeAuthorDate
                  insId <- gets stInsId
                  modify $ \s -> s{stInsId = insId + 1}
                  return $ \f -> do
                    x <- f
                    return [ mknode "w:ins"
-                              [("w:id", show insId),
-                              ("w:author", T.unpack author),
-                              ("w:date", T.unpack date)] x ]
+                              (("w:id", show insId) : changeAuthorDate) x]
                else return id
   delmod <- if "deletion" `elem` classes
                then do
-                 (author, date) <- getChangeAuthorDate
+                 changeAuthorDate <- getChangeAuthorDate
                  delId <- gets stDelId
                  modify $ \s -> s{stDelId = delId + 1}
                  return $ \f -> local (\env->env{envInDel=True}) $ do
                    x <- f
                    return [mknode "w:del"
-                           [("w:id", show delId),
-                           ("w:author", T.unpack author),
-                           ("w:date", T.unpack date)] x]
+                           (("w:id", show delId) : changeAuthorDate) x]
                else return id
   contents <- insmod $ delmod $ dirmod $ stylemod $ pmod
                      $ inlinesToOpenXML opts ils

@@ -529,8 +529,25 @@ options =
 
     , Option "" ["atx-headers"]
                  (NoArg
-                  (\opt -> return opt { optSetextHeaders = False } ))
+                  (\opt -> do
+                    deprecatedOption "--atx-headers"
+                      "Use --markdown-headings=atx instead."
+                    return opt { optSetextHeaders = False } ))
                  "" -- "Use atx-style headers for markdown"
+
+    , Option "" ["markdown-headings"]
+                  (ReqArg
+                    (\arg opt -> do
+                      headingFormat <- case arg of
+                        "setext" -> pure True
+                        "atx" -> pure False
+                        _ -> E.throwIO $ PandocOptionError $ T.pack
+                          ("Unknown markdown heading format: " ++ arg ++
+                            ". Expecting atx or setext")
+                      pure opt { optSetextHeaders = headingFormat }
+                    )
+                  "setext|atx")
+                  ""
 
     , Option "" ["listings"]
                  (NoArg
@@ -840,7 +857,7 @@ options =
                                  , sShortname s `notElem`
                                     [T.pack "Alert", T.pack "Alert_indent"]
                                  ]
-                     mapM_ (UTF8.hPutStrLn stdout) langs
+                     mapM_ (UTF8.hPutStrLn stdout) (sort langs)
                      exitSuccess ))
                  ""
 
@@ -913,7 +930,8 @@ options =
                      prg <- getProgName
                      defaultDatadirs <- defaultUserDataDirs
                      UTF8.hPutStrLn stdout (prg ++ " " ++ T.unpack pandocVersion ++
-                       compileInfo ++ "\nDefault user data directory: " ++
+                       compileInfo ++
+                       "\nUser data directory: " ++
                        intercalate " or " defaultDatadirs ++
                        ('\n':copyrightMessage))
                      exitSuccess ))
@@ -944,16 +962,16 @@ usageMessage programName = usageInfo (programName ++ " [OPTIONS] [FILES]")
 
 copyrightMessage :: String
 copyrightMessage = intercalate "\n" [
-  "Copyright (C) 2006-2020 John MacFarlane",
-  "Web:  https://pandoc.org",
-  "This is free software; see the source for copying conditions.",
-  "There is no warranty, not even for merchantability or fitness",
-  "for a particular purpose." ]
+ "Copyright (C) 2006-2020 John MacFarlane. Web:  https://pandoc.org",
+ "This is free software; see the source for copying conditions. There is no",
+ "warranty, not even for merchantability or fitness for a particular purpose." ]
 
 compileInfo :: String
 compileInfo =
-  "\nCompiled with pandoc-types " ++ VERSION_pandoc_types ++ ", texmath " ++
-  VERSION_texmath ++ ", skylighting " ++ VERSION_skylighting
+  "\nCompiled with pandoc-types " ++ VERSION_pandoc_types ++
+  ", texmath " ++ VERSION_texmath ++ ", skylighting " ++
+  VERSION_skylighting ++ ",\nciteproc " ++ VERSION_citeproc ++
+  ", ipynb " ++ VERSION_ipynb
 
 handleUnrecognizedOption :: String -> [String] -> [String]
 handleUnrecognizedOption "--smart" =

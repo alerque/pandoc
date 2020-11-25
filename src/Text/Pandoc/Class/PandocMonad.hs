@@ -160,7 +160,7 @@ setVerbosity verbosity =
 getVerbosity :: PandocMonad m => m Verbosity
 getVerbosity = getsCommonState stVerbosity
 
--- | Get the accomulated log messages (in temporal order).
+-- | Get the accumulated log messages (in temporal order).
 getLog :: PandocMonad m => m [LogMessage]
 getLog = reverse <$> getsCommonState stLog
 
@@ -600,7 +600,7 @@ makeCanonical = Posix.joinPath . transformPathParts . splitDirectories
         go (_:as) ".." = as
         go as     x    = x : as
 
--- | Trys to run an action on a file: for each directory given, a
+-- | Tries to run an action on a file: for each directory given, a
 -- filepath is created from the given filename, and the action is run on
 -- that filepath. Returns the result of the first successful execution
 -- of the action, or throws a @PandocResourceNotFound@ exception if the
