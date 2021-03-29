@@ -312,7 +312,7 @@ inlineListToSILE lst = hcat <$>
        fixLineInitialSpaces (x:xs) = x : fixLineInitialSpaces xs
        fixNbsps s = let (ys,zs) = T.span (=='\160') s
                     in  replicate (T.length ys) hspace <> [Str zs]
-       hspace = RawInline "sile" "\\nbsp{}" -- TODO: use U+00A0
+       hspace = RawInline "sile" "\\Nbsp{}" -- TODO: use U+00A0
 
 -- | Convert inline element to SILE
 inlineToSILE :: PandocMonad m
