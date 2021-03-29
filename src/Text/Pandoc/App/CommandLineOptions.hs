@@ -6,7 +6,7 @@
 {-# LANGUAGE FlexibleContexts    #-}
 {- |
    Module      : Text.Pandoc.App.CommandLineOptions
-   Copyright   : Copyright (C) 2006-2020 John MacFarlane
+   Copyright   : Copyright (C) 2006-2021 John MacFarlane
    License     : GNU GPL, version 2 or above
 
    Maintainer  : John MacFarlane <jgm@berkeley@edu>
@@ -17,6 +17,7 @@ Does a pandoc conversion based on command-line options.
 -}
 module Text.Pandoc.App.CommandLineOptions (
             parseOptions
+          , parseOptionsFromArgs
           , options
           , engines
           , lookupHighlightStyle
@@ -25,11 +26,12 @@ module Text.Pandoc.App.CommandLineOptions (
 import Control.Monad
 import Control.Monad.Trans
 import Control.Monad.Except (throwError)
+import Control.Monad.State.Strict
 import Data.Aeson.Encode.Pretty (encodePretty', Config(..), keyOrder,
          defConfig, Indent(..), NumberFormat(..))
 import Data.Bifunctor (second)
 import Data.Char (toLower)
-import Data.List (intercalate, sort)
+import Data.List (intercalate, sort, foldl')
 #ifdef _WINDOWS
 #if MIN_VERSION_base(4,12,0)
 import Data.List (isPrefixOf)
@@ -46,10 +48,13 @@ import System.FilePath
 import System.IO (stdout)
 import Text.DocTemplates (Context (..), ToContext (toVal), Val (..))
 import Text.Pandoc
-import Text.Pandoc.App.Opt (Opt (..), LineEnding (..), IpynbOutput (..), addMeta)
+import Text.Pandoc.Builder (setMeta)
+import Text.Pandoc.App.Opt (Opt (..), LineEnding (..), IpynbOutput (..),
+                            DefaultsState (..), applyDefaults,
+                            fullDefaultsPath)
 import Text.Pandoc.Filter (Filter (..))
 import Text.Pandoc.Highlighting (highlightingStyles)
-import Text.Pandoc.Shared (ordNub, elemText, safeStrRead, defaultUserDataDirs, findM)
+import Text.Pandoc.Shared (ordNub, elemText, safeStrRead, defaultUserDataDir)
 import Text.Printf
 
 #ifdef EMBED_DATA_FILES
@@ -64,16 +69,19 @@ import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as B
 import qualified Data.Map as M
 import qualified Data.Text as T
-import qualified Data.YAML as Y
 import qualified Text.Pandoc.UTF8 as UTF8
 
 parseOptions :: [OptDescr (Opt -> IO Opt)] -> Opt -> IO Opt
 parseOptions options' defaults = do
   rawArgs <- map UTF8.decodeArg <$> getArgs
   prg <- getProgName
+  parseOptionsFromArgs options' defaults prg rawArgs
 
+parseOptionsFromArgs
+  :: [OptDescr (Opt -> IO Opt)] -> Opt -> String -> [String] -> IO Opt
+parseOptionsFromArgs options' defaults prg rawArgs = do
   let (actions, args, unrecognizedOpts, errors) =
-           getOpt' Permute options' rawArgs
+           getOpt' Permute options' (map UTF8.decodeArg rawArgs)
 
   let unknownOptionErrors =
        foldr (handleUnrecognizedOption . takeWhile (/= '=')) []
@@ -85,7 +93,7 @@ parseOptions options' defaults = do
         ("Try " ++ prg ++ " --help for more information.")
 
   -- thread option data structure through all supplied option actions
-  opts <- foldl (>>=) (return defaults) actions
+  opts <- foldl' (>>=) (return defaults) actions
   let mbArgs = case args of
                  [] -> Nothing
                  xs -> Just xs
@@ -166,7 +174,11 @@ options =
 
     , Option "d" ["defaults"]
                  (ReqArg
-                  (\arg opt -> applyDefaults opt arg
+                  (\arg opt -> runIOorExplode $ do
+                     let defsState = DefaultsState { curDefaults = Nothing,
+                                                     inheritanceGraph = [] }
+                     fp <- fullDefaultsPath (optDataDir opt) arg
+                     evalStateT (applyDefaults opt fp) defsState
                   )
                   "FILE")
                 ""
@@ -276,7 +288,8 @@ options =
     , Option "" ["resource-path"]
                 (ReqArg
                   (\arg opt -> return opt { optResourcePath =
-                                   splitSearchPath arg })
+                                   splitSearchPath arg ++
+                                    optResourcePath opt })
                    "SEARCHPATH")
                   "" -- "Paths to search for images and other resources"
 
@@ -801,10 +814,10 @@ options =
                            map (\c -> ['-',c]) shorts ++
                            map ("--" ++) longs
                      let allopts = unwords (concatMap optnames options)
-                     UTF8.hPutStrLn stdout $ printf tpl allopts
-                         (unwords readersNames)
-                         (unwords writersNames)
-                         (unwords $ map (T.unpack . fst) highlightingStyles)
+                     UTF8.hPutStrLn stdout $ T.pack $ printf tpl allopts
+                         (T.unpack $ T.unwords readersNames)
+                         (T.unpack $ T.unwords writersNames)
+                         (T.unpack $ T.unwords $ map fst highlightingStyles)
                          (unwords datafiles)
                      exitSuccess ))
                  "" -- "Print bash completion script"
@@ -843,7 +856,7 @@ options =
                                else if extensionEnabled x allExts
                                        then '-'
                                        else ' ') : drop 4 (show x)
-                     mapM_ (UTF8.hPutStrLn stdout . showExt)
+                     mapM_ (UTF8.hPutStrLn stdout . T.pack . showExt)
                        [ex | ex <- extList, extensionEnabled ex allExts]
                      exitSuccess )
                   "FORMAT")
@@ -857,14 +870,14 @@ options =
                                  , sShortname s `notElem`
                                     [T.pack "Alert", T.pack "Alert_indent"]
                                  ]
-                     mapM_ (UTF8.hPutStrLn stdout) (sort langs)
+                     mapM_ (UTF8.hPutStrLn stdout . T.pack) (sort langs)
                      exitSuccess ))
                  ""
 
     , Option "" ["list-highlight-styles"]
                  (NoArg
                   (\_ -> do
-                     mapM_ (UTF8.hPutStrLn stdout . T.unpack . fst) highlightingStyles
+                     mapM_ (UTF8.hPutStrLn stdout . fst) highlightingStyles
                      exitSuccess ))
                  ""
 
@@ -882,7 +895,7 @@ options =
                             | T.null t -> -- e.g. for docx, odt, json:
                                 E.throwIO $ PandocCouldNotFindDataFileError $ T.pack
                                   ("templates/default." ++ arg)
-                            | otherwise -> write . T.unpack $ t
+                            | otherwise -> write t
                           Left e  -> E.throwIO e
                      exitSuccess)
                   "FORMAT")
@@ -928,12 +941,13 @@ options =
                  (NoArg
                   (\_ -> do
                      prg <- getProgName
-                     defaultDatadirs <- defaultUserDataDirs
-                     UTF8.hPutStrLn stdout (prg ++ " " ++ T.unpack pandocVersion ++
-                       compileInfo ++
-                       "\nUser data directory: " ++
-                       intercalate " or " defaultDatadirs ++
-                       ('\n':copyrightMessage))
+                     defaultDatadir <- defaultUserDataDir
+                     UTF8.hPutStrLn stdout
+                      $ T.pack
+                      $ prg ++ " " ++ T.unpack pandocVersion ++
+                        compileInfo ++
+                        "\nUser data directory: " ++ defaultDatadir ++
+                        ('\n':copyrightMessage)
                      exitSuccess ))
                  "" -- "Print version"
 
@@ -941,7 +955,7 @@ options =
                  (NoArg
                   (\_ -> do
                      prg <- getProgName
-                     UTF8.hPutStr stdout (usageMessage prg options)
+                     UTF8.hPutStr stdout (T.pack $ usageMessage prg options)
                      exitSuccess ))
                  "" -- "Show help"
     ]
@@ -962,7 +976,7 @@ usageMessage programName = usageInfo (programName ++ " [OPTIONS] [FILES]")
 
 copyrightMessage :: String
 copyrightMessage = intercalate "\n" [
- "Copyright (C) 2006-2020 John MacFarlane. Web:  https://pandoc.org",
+ "Copyright (C) 2006-2021 John MacFarlane. Web:  https://pandoc.org",
  "This is free software; see the source for copying conditions. There is no",
  "warranty, not even for merchantability or fitness for a particular purpose." ]
 
@@ -1002,37 +1016,15 @@ handleUnrecognizedOption "-R" = handleUnrecognizedOption "--parse-raw"
 handleUnrecognizedOption x =
   (("Unknown option " ++ x ++ ".") :)
 
-readersNames :: [String]
-readersNames = sort (map (T.unpack . fst) (readers :: [(Text, Reader PandocIO)]))
+readersNames :: [Text]
+readersNames = sort (map fst (readers :: [(Text, Reader PandocIO)]))
 
-writersNames :: [String]
+writersNames :: [Text]
 writersNames = sort
-  ("pdf" : map (T.unpack . fst) (writers :: [(Text, Writer PandocIO)]))
+  ("pdf" : map fst (writers :: [(Text, Writer PandocIO)]))
 
 splitField :: String -> (String, String)
 splitField = second (tailDef "true") . break (`elemText` ":=")
-
--- | Apply defaults from --defaults file.
-applyDefaults :: Opt -> FilePath -> IO Opt
-applyDefaults opt file = runIOorExplode $ do
-  let fp = if null (takeExtension file)
-              then addExtension file "yaml"
-              else file
-  setVerbosity $ optVerbosity opt
-  dataDirs <- liftIO defaultUserDataDirs
-  let fps = fp : case optDataDir opt of
-              Nothing -> map (</> ("defaults" </> fp))
-                               dataDirs
-              Just dd -> [dd </> "defaults" </> fp]
-  fp' <- fromMaybe fp <$> findM fileExists fps
-  inp <- readFileLazy fp'
-  case Y.decode1 inp of
-      Right (f :: Opt -> Opt) -> return $ f opt
-      Left (errpos, errmsg)  -> throwError $
-         PandocParseError $ T.pack $
-         "Error parsing " ++ fp' ++ " line " ++
-          show (Y.posLine errpos) ++ " column " ++
-          show (Y.posColumn errpos) ++ ":\n" ++ errmsg
 
 lookupHighlightStyle :: PandocMonad m => String -> m Style
 lookupHighlightStyle s
@@ -1061,6 +1053,27 @@ setVariable key val (Context ctx) = Context $ M.alter go key ctx
   where go Nothing             = Just $ toVal val
         go (Just (ListVal xs)) = Just $ ListVal $ xs ++ [toVal val]
         go (Just x)            = Just $ ListVal [x, toVal val]
+
+addMeta :: String -> String -> Meta -> Meta
+addMeta k v meta =
+  case lookupMeta k' meta of
+       Nothing -> setMeta k' v' meta
+       Just (MetaList xs) ->
+                  setMeta k' (MetaList (xs ++ [v'])) meta
+       Just x  -> setMeta k' (MetaList [x, v']) meta
+ where
+  v' = readMetaValue v
+  k' = T.pack k
+
+readMetaValue :: String -> MetaValue
+readMetaValue s
+  | s == "true"  = MetaBool True
+  | s == "True"  = MetaBool True
+  | s == "TRUE"  = MetaBool True
+  | s == "false" = MetaBool False
+  | s == "False" = MetaBool False
+  | s == "FALSE" = MetaBool False
+  | otherwise    = MetaString $ T.pack s
 
 -- On Windows with ghc 8.6+, we need to rewrite paths
 -- beginning with \\ to \\?\UNC\. -- See #5127.

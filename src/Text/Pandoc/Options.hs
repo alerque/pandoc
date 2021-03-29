@@ -6,7 +6,7 @@
 {-# LANGUAGE TemplateHaskell    #-}
 {- |
    Module      : Text.Pandoc.Options
-   Copyright   : Copyright (C) 2012-2020 John MacFarlane
+   Copyright   : Copyright (C) 2012-2021 John MacFarlane
    License     : GNU GPL, version 2 or above
 
    Maintainer  : John MacFarlane <jgm@berkeley.edu>
@@ -65,6 +65,7 @@ data ReaderOptions = ReaderOptions{
        , readerDefaultImageExtension :: Text -- ^ Default extension for images
        , readerTrackChanges          :: TrackChanges -- ^ Track changes setting for docx
        , readerStripComments         :: Bool -- ^ Strip HTML comments instead of parsing as raw HTML
+                                             -- (only implemented in commonmark)
 } deriving (Show, Read, Data, Typeable, Generic)
 
 instance HasSyntaxExtensions ReaderOptions where

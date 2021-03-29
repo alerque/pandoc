@@ -6,7 +6,7 @@
 {-# LANGUAGE ViewPatterns        #-}
 {- |
    Module      : Text.Pandoc.Writers.HTML
-   Copyright   : Copyright (C) 2006-2020 John MacFarlane
+   Copyright   : Copyright (C) 2006-2021 John MacFarlane
    License     : GNU GPL, version 2 or above
 
    Maintainer  : John MacFarlane <jgm@berkeley.edu>
@@ -30,9 +30,9 @@ module Text.Pandoc.Writers.HTML (
   ) where
 import Control.Monad.State.Strict
 import Data.Char (ord)
-import Data.List (intercalate, intersperse, partition, delete, (\\))
+import Data.List (intercalate, intersperse, partition, delete, (\\), foldl')
 import Data.List.NonEmpty (NonEmpty((:|)))
-import Data.Maybe (fromMaybe, isJust, isNothing, mapMaybe)
+import Data.Maybe (fromMaybe, isJust, isNothing)
 import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -254,6 +254,8 @@ pandocToHtml opts (Pandoc meta blocks) = do
   let stringifyHTML = escapeStringForXML . stringify
   let authsMeta = map stringifyHTML $ docAuthors meta
   let dateMeta  = stringifyHTML $ docDate meta
+  let descriptionMeta = escapeStringForXML $
+                          lookupMetaString "description" meta
   slideVariant <- gets stSlideVariant
   let sects = adjustNumbers opts $
               makeSections (writerNumberSections opts) Nothing $
@@ -352,6 +354,7 @@ pandocToHtml opts (Pandoc meta blocks) = do
                   defField "author-meta" authsMeta .
                   maybe id (defField "date-meta")
                     (normalizeDate dateMeta) .
+                  defField "description-meta" descriptionMeta .
                   defField "pagetitle"
                       (stringifyHTML . docTitle $ meta) .
                   defField "idprefix" (writerIdentifierPrefix opts) .
@@ -541,30 +544,35 @@ tagWithAttributes opts html5 selfClosing tagname attr =
 
 addAttrs :: PandocMonad m
          => WriterOptions -> Attr -> Html -> StateT WriterState m Html
-addAttrs opts attr h = foldl (!) h <$> attrsToHtml opts attr
+addAttrs opts attr h = foldl' (!) h <$> attrsToHtml opts attr
 
 toAttrs :: PandocMonad m
         => [(Text, Text)] -> StateT WriterState m [Attribute]
 toAttrs kvs = do
   html5 <- gets stHtml5
   mbEpubVersion <- gets stEPUBVersion
-  return $ mapMaybe (\(x,y) ->
-            if html5
-               then
-                  if x `Set.member` (html5Attributes <> rdfaAttributes)
-                     || T.any (== ':') x -- e.g. epub: namespace
-                     || "data-" `T.isPrefixOf` x
-                     || "aria-" `T.isPrefixOf` x
-                     then Just $ customAttribute (textTag x) (toValue y)
-                     else Just $ customAttribute (textTag ("data-" <> x))
-                                  (toValue y)
-               else
-                 if mbEpubVersion == Just EPUB2 &&
-                    not (x `Set.member` (html4Attributes <> rdfaAttributes) ||
-                         "xml:" `T.isPrefixOf` x)
-                    then Nothing
-                    else Just $ customAttribute (textTag x) (toValue y))
-            kvs
+  reverse . snd <$> foldM (go html5 mbEpubVersion) (Set.empty, []) kvs
+ where
+  go html5 mbEpubVersion (keys, attrs) (k,v) = do
+    if k `Set.member` keys
+       then do
+         report $ DuplicateAttribute k v
+         return (keys, attrs)
+       else return (Set.insert k keys, addAttr html5 mbEpubVersion k v attrs)
+  addAttr html5 mbEpubVersion x y
+    | html5
+      = if x `Set.member` (html5Attributes <> rdfaAttributes)
+             || T.any (== ':') x -- e.g. epub: namespace
+             || "data-" `T.isPrefixOf` x
+             || "aria-" `T.isPrefixOf` x
+           then (customAttribute (textTag x) (toValue y) :)
+           else (customAttribute (textTag ("data-" <> x)) (toValue y) :)
+    | mbEpubVersion == Just EPUB2
+    , not (x `Set.member` (html4Attributes <> rdfaAttributes) ||
+      "xml:" `T.isPrefixOf` x)
+      = id
+    | otherwise
+      = (customAttribute (textTag x) (toValue y) :)
 
 attrsToHtml :: PandocMonad m
             => WriterOptions -> Attr -> StateT WriterState m [Attribute]
@@ -695,12 +703,12 @@ blockToHtml opts (Div (ident, "section":dclasses, dkvs)
   let fragmentClass = case slideVariant of
                            RevealJsSlides -> "fragment"
                            _              -> "incremental"
-  let inDiv zs = RawBlock (Format "html") ("<div class=\""
+  let inDiv' zs = RawBlock (Format "html") ("<div class=\""
                        <> fragmentClass <> "\">") :
                    (zs ++ [RawBlock (Format "html") "</div>"])
   let breakOnPauses zs = case splitBy isPause zs of
                            []   -> []
-                           y:ys -> y ++ concatMap inDiv ys
+                           y:ys -> y ++ concatMap inDiv' ys
   let (titleBlocks, innerSecs) =
         if titleSlide
            -- title slides have no content of their own
@@ -778,14 +786,17 @@ blockToHtml opts (Div attr@(ident, classes, kvs') bs) = do
       classes' = case slideVariant of
         NoSlides -> classes
         _ -> filter (\k -> k /= "incremental" && k /= "nonincremental") classes
+  let paraToPlain (Para ils) = Plain ils
+      paraToPlain x          = x
+  let bs' = if "csl-entry" `elem` classes'
+               then walk paraToPlain bs
+               else bs
   contents <- if "columns" `elem` classes'
                  then -- we don't use blockListToHtml because it inserts
                       -- a newline between the column divs, which throws
                       -- off widths! see #4028
-                      mconcat <$> mapM (blockToHtml opts) bs
-                 else if isCslBibEntry
-                         then mconcat <$> mapM (cslEntryToHtml opts') bs
-                         else blockListToHtml opts' bs
+                      mconcat <$> mapM (blockToHtml opts) bs'
+                 else blockListToHtml opts' bs'
   let contents' = nl opts >> contents >> nl opts
   let (divtag, classes'') = if html5 && "section" `elem` classes'
                             then (H5.section, filter (/= "section") classes')
@@ -915,7 +926,7 @@ blockToHtml opts (OrderedList (startnum, numstyle, _) lst) = do
                                    numstyle']
                    else [])
   l <- ordList opts contents
-  return $ foldl (!) l attribs
+  return $ foldl' (!) l attribs
 blockToHtml opts (DefinitionList lst) = do
   contents <- mapM (\(term, defs) ->
                   do term' <- liftM H.dt $ inlineListToHtml opts term
@@ -1213,6 +1224,10 @@ inlineToHtml opts inline = do
     LineBreak      -> return $ do
                         if html5 then H5.br else H.br
                         strToHtml "\n"
+    (Span ("",[cls],[]) ils)
+        | cls == "csl-block" || cls == "csl-left-margin" ||
+          cls == "csl-right-inline" || cls == "csl-indent"
+        -> inlineListToHtml opts ils >>= inDiv cls
 
     (Span (id',classes,kvs) ils) ->
                         let spanLikeTag = case classes of
@@ -1392,7 +1407,7 @@ inlineToHtml opts inline = do
                               Just "audio" -> mediaTag H5.audio "Audio"
                               Just _       -> (H5.embed, [])
                               _            -> imageTag
-                        return $ foldl (!) tag $ attributes ++ specAttrs
+                        return $ foldl' (!) tag $ attributes ++ specAttrs
                         -- note:  null title included, as in Markdown.pl
     (Note contents) -> do
                         notes <- gets stNotes
@@ -1445,11 +1460,15 @@ blockListToNote opts ref blocks = do
                     else let lastBlock   = last blocks
                              otherBlocks = init blocks
                          in  case lastBlock of
-                                  (Para lst)  -> otherBlocks ++
+                                  Para [Image _ _ (_,tit)]
+                                      | "fig:" `T.isPrefixOf` tit
+                                            -> otherBlocks ++ [lastBlock,
+                                                  Plain backlink]
+                                  Para lst  -> otherBlocks ++
                                                  [Para (lst ++ backlink)]
-                                  (Plain lst) -> otherBlocks ++
+                                  Plain lst -> otherBlocks ++
                                                  [Plain (lst ++ backlink)]
-                                  _           -> otherBlocks ++ [lastBlock,
+                                  _         -> otherBlocks ++ [lastBlock,
                                                  Plain backlink]
   contents <- blockListToHtml opts blocks'
   let noteItem = H.li ! prefixedId opts ("fn" <> ref) $ contents
@@ -1462,22 +1481,12 @@ blockListToNote opts ref blocks = do
                        _          -> noteItem
   return $ nl opts >> noteItem'
 
-cslEntryToHtml :: PandocMonad m
-               => WriterOptions
-               -> Block
-               -> StateT WriterState m Html
-cslEntryToHtml opts (Para xs) = do
+inDiv :: PandocMonad m=> Text -> Html -> StateT WriterState m Html
+inDiv cls x = do
   html5 <- gets stHtml5
-  let inDiv :: Text -> Html -> Html
-      inDiv cls x = (if html5 then H5.div else H.div)
-                      x ! A.class_ (toValue cls)
-  let go (Span ("",[cls],[]) ils)
-        | cls == "csl-block" || cls == "csl-left-margin" ||
-          cls == "csl-right-inline" || cls == "csl-indent"
-        = inDiv cls <$> inlineListToHtml opts ils
-      go il = inlineToHtml opts il
-  mconcat <$> mapM go xs
-cslEntryToHtml opts x = blockToHtml opts x
+  return $
+    (if html5 then H5.div else H.div)
+                x ! A.class_ (toValue cls)
 
 isMathEnvironment :: Text -> Bool
 isMathEnvironment s = "\\begin{" `T.isPrefixOf` s &&

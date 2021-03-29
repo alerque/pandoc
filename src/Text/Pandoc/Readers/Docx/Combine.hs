@@ -2,7 +2,7 @@
 {- |
    Module      : Text.Pandoc.Readers.Docx.Combine
    Copyright   : © 2014-2020 Jesse Rosenthal <jrosenthal@jhu.edu>,
-                   2014-2020 John MacFarlane <jgm@berkeley.edu>,
+                   2014-2021 John MacFarlane <jgm@berkeley.edu>,
                    2020 Nikolay Yakimov <root@livid.pp.ru>
    License     : GNU GPL, version 2 or above
 
@@ -182,7 +182,7 @@ isAttrModifier _                  = False
 
 smushInlines :: [Inlines] -> Inlines
 smushInlines xs = combineInlines xs' mempty
-  where xs' = foldl combineInlines mempty xs
+  where xs' = foldl' combineInlines mempty xs
 
 smushBlocks :: [Blocks] -> Blocks
-smushBlocks xs = foldl combineBlocks mempty xs
+smushBlocks xs = foldl' combineBlocks mempty xs

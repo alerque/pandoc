@@ -1,9 +1,8 @@
-{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {- |
    Module      : Tests.Readers.Jira
-   Copyright   : © 2019-2020 Albert Krewinel
+   Copyright   : © 2019-2021 Albert Krewinel
    License     : GNU GPL, version 2 or above
 
    Maintainer  : Albert Krewinkel <tarleb@zeitkraut.de>
@@ -35,6 +34,9 @@ tests =
   [ testGroup "para"
     [ "Simple sentence" =:
       "Hello, World!" =?> para "Hello, World!"
+
+    , "leading blank lines" =:
+      "\n\ntext" =?> para "text"
     ]
 
   , testGroup "header"
@@ -94,6 +96,12 @@ tests =
       simpleTable [para "Name"] [[para "Test"]]
     ]
 
+  , testGroup "panel"
+    [ "simple panel" =:
+      "{panel}\nInterviewer: Jane Doe{panel}\n" =?>
+      divWith ("", ["panel"], []) (para "Interviewer: Jane Doe")
+    ]
+
   , testGroup "inlines"
     [ "emphasis" =:
       "*quid pro quo*" =?>
@@ -131,6 +139,10 @@ tests =
       [ "external" =:
         "[Example|https://example.org]" =?>
         para (link "https://example.org" "" "Example")
+
+      , "URL in alias" =:
+        "[See https://example.com|https://example.com]" =?>
+        para (link "https://example.com" "" "See https://example.com")
 
       , "email" =:
         "[mailto:me@example.org]" =?>

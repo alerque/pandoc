@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {- |
    Module      : Text.Pandoc.Readers.Org.Inlines
-   Copyright   : Copyright (C) 2014-2020 Albert Krewinkel
+   Copyright   : Copyright (C) 2014-2021 Albert Krewinkel
    License     : GNU GPL, version 2 or above
 
    Maintainer  : Albert Krewinkel <tarleb+pandoc@moltkeplatz.de>
@@ -322,7 +322,7 @@ linkLikeOrgRefCite = try $ do
 -- from the `org-ref-cite-re` variable in `org-ref.el`.
 orgRefCiteKey :: PandocMonad m => OrgParser m Text
 orgRefCiteKey =
-  let citeKeySpecialChars = "-_:\\./," :: String
+  let citeKeySpecialChars = "-_:\\./" :: String
       isCiteKeySpecialChar c = c `elem` citeKeySpecialChars
       isCiteKeyChar c = isAlphaNum c || isCiteKeySpecialChar c
       endOfCitation = try $ do
@@ -477,17 +477,17 @@ linkToInlinesF linkStr =
 
 internalLink :: Text -> Inlines -> F Inlines
 internalLink link title = do
-  anchorB <- (link `elem`) <$> asksF orgStateAnchorIds
-  if anchorB
+  ids <- asksF orgStateAnchorIds
+  if link `elem` ids
     then return $ B.link ("#" <> link) "" title
-    else return $ B.emph title
+    else let attr' = ("", ["spurious-link"] , [("target", link)])
+         in return $ B.spanWith attr' (B.emph title)
 
 -- | Parse an anchor like @<<anchor-id>>@ and return an empty span with
 -- @anchor-id@ set as id.  Legal anchors in org-mode are defined through
 -- @org-target-regexp@, which is fairly liberal.  Since no link is created if
 -- @anchor-id@ contains spaces, we are more restrictive in what is accepted as
 -- an anchor.
-
 anchor :: PandocMonad m => OrgParser m (F Inlines)
 anchor =  try $ do
   anchorId <- parseAnchor
@@ -501,7 +501,6 @@ anchor =  try $ do
 
 -- | Replace every char but [a-zA-Z0-9_.-:] with a hyphen '-'.  This mirrors
 -- the org function @org-export-solidify-link-text@.
-
 solidify :: Text -> Text
 solidify = T.map replaceSpecialChar
  where replaceSpecialChar c
@@ -573,7 +572,7 @@ underline :: PandocMonad m => OrgParser m (F Inlines)
 underline = fmap B.underline    <$> emphasisBetween '_'
 
 verbatim  :: PandocMonad m => OrgParser m (F Inlines)
-verbatim  = return . B.code     <$> verbatimBetween '='
+verbatim  = return . B.codeWith ("", ["verbatim"], []) <$> verbatimBetween '='
 
 code      :: PandocMonad m => OrgParser m (F Inlines)
 code      = return . B.code     <$> verbatimBetween '~'

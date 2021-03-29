@@ -51,6 +51,7 @@ module Text.Pandoc.Class.PandocMonad
   , setTranslations
   , translateTerm
   , makeCanonical
+  , getTimestamp
   ) where
 
 import Codec.Archive.Zip
@@ -58,8 +59,10 @@ import Control.Monad.Except (MonadError (catchError, throwError),
                              MonadTrans, lift, when)
 import Data.Digest.Pure.SHA (sha1, showDigest)
 import Data.Maybe (fromMaybe)
+import Data.List (foldl')
 import Data.Time (UTCTime)
-import Data.Time.Clock.POSIX (POSIXTime, utcTimeToPOSIXSeconds)
+import Data.Time.Clock.POSIX (POSIXTime, utcTimeToPOSIXSeconds,
+                             posixSecondsToUTCTime)
 import Data.Time.LocalTime (TimeZone, ZonedTime, utcToZonedTime)
 import Network.URI ( escapeURIString, nonStrictRelativeTo,
                      unEscapeString, parseURIReference, isAllowedInURI,
@@ -74,7 +77,7 @@ import Text.Pandoc.Error
 import Text.Pandoc.Logging
 import Text.Pandoc.MIME (MimeType, getMimeType, extensionFromMimeType)
 import Text.Pandoc.MediaBag (MediaBag, lookupMedia)
-import Text.Pandoc.Shared (uriPathToPath)
+import Text.Pandoc.Shared (uriPathToPath, safeRead)
 import Text.Pandoc.Translations (Term(..), Translations, lookupTerm,
                                  readTranslations)
 import Text.Pandoc.Walk (walkM)
@@ -174,6 +177,21 @@ report msg = do
   let level = messageVerbosity msg
   when (level <= verbosity) $ logOutput msg
   modifyCommonState $ \st -> st{ stLog = msg : stLog st }
+
+-- | Get the time from the @SOURCE_DATE_EPOCH@
+-- environment variable. The variable should contain a
+-- unix time stamp, the number of seconds since midnight Jan 01
+-- 1970 UTC.  If the variable is not set or cannot be
+-- parsed as a unix time stamp, the current time is returned.
+-- This function is designed to make possible reproducible
+-- builds in formats that include a creation timestamp.
+getTimestamp :: PandocMonad m => m UTCTime
+getTimestamp = do
+  mbSourceDateEpoch <- lookupEnv "SOURCE_DATE_EPOCH"
+  case mbSourceDateEpoch >>= safeRead of
+    Just (epoch :: Integer) ->
+      return $ posixSecondsToUTCTime $ fromIntegral epoch
+    Nothing -> getCurrentTime
 
 -- | Determine whether tracing is enabled.  This affects
 -- the behavior of 'trace'.  If tracing is not enabled,
@@ -595,7 +613,7 @@ checkExistence fn = do
 -- | Canonicalizes a file path by removing redundant @.@ and @..@.
 makeCanonical :: FilePath -> FilePath
 makeCanonical = Posix.joinPath . transformPathParts . splitDirectories
- where  transformPathParts = reverse . foldl go []
+ where  transformPathParts = reverse . foldl' go []
         go as     "."  = as
         go (_:as) ".." = as
         go as     x    = x : as

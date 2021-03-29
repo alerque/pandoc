@@ -33,11 +33,29 @@ Metadata Values
 
         See [`<given-names>`][elem:given-names].
 
+    `name`
+    :   full name of the author; included only as a fallback if
+        `author.surname` is not available. Tagged with
+        [`<string-name>`][elem:string-name].
+
     `email`
     :   the contributor's email address.
 
         Used as the contents of the [`<email>`][elem:given-names]
         element.
+
+    `affiliation`
+    :   list of affiliation identifiers; marks the organizations
+        with which an author is affiliated. Each identifier in this
+        list must also occur as the `id` of an affiliation listed in
+        the top-level `affiliation` list.
+
+    `equal-contrib`
+    :   boolean attribute used to mark authors who contributed
+        equally to the work. The
+        [`equal-contrib`][attr:equal-contrib] attribute is added
+        to the author's [`<contrib>`] element if this is set to a
+        truthy value.
 
     `cor-id`
     :   identifier linking to the contributor's correspondence
@@ -47,6 +65,80 @@ Metadata Values
         [`ref-type`][attr:ref-type] `corresp` is added. The
         [`rid`][attr:rid] attribute is set to `cor-<ID>`, where
         `<ID>` is the stringified value of this attribute.
+
+`affiliation`
+:   the list of organizations with which contributors are
+    affiliated. Each institution is added as an [`<aff>`] element to
+    the author's contrib-group.
+
+    The fields are given in the order in which they are included in
+    the output.
+
+    `id`
+    :   internal identifier; used as the [`<aff>`] element's `id`
+        value, prefixed with `aff-`.
+
+    `group`
+    :   name of the research group or other low-level organizational
+        structure; used as value of an [`<institution>`] element with
+        [`content-type`][attr:content-type] set to `group`.
+
+    `department`
+    :   name of the department or other mid-level organizational
+        structure; used as value of an [`<institution>`] element with
+        [`content-type`][attr:content-type] set to `dept`.
+
+    `organization`
+    :   name of the company, university, or other top-level
+        organizational structure; used as value of an
+        [`<institution>`] element. The institution element is wrapped
+        in an [`<institution-wrap>`] element; any identifiers, like
+        `ringgold` or `ror`, are added to the wrapper and must hence
+        belong to this organization (not the department or group).
+
+    `isni`
+    :   International Standard Name Identifier of the organization.
+        Added via an [`<institution-id>`] element with
+        [`institution-id-type`](attr:institution-id-type) set to
+        `ISNI`.
+
+    `ringgold`
+    :   [Ringgold] identifier of the organization. Added via an
+        [`<institution-id>`] element with
+        [`institution-id-type`](attr:institution-id-type) set to
+        `Ringgold`.
+
+    `ror`
+    :   Research Organization Registry identifier of the
+        organization. Added via an [`<institution-id>`] element with
+        [`institution-id-type`](attr:institution-id-type) set to
+        `ROR`.
+
+    `pid`
+    :   Array of persistent identifiers which are added as
+        [`<institution-id>`] elements. Each item must contain a map
+        with keys `type`, used as
+        [`institution-id-type`](attr:institution-id-type), and `id`,
+        used as element content.
+
+    `street-address`
+    :   The organization's street address; each list item is wrapped
+        in an [`<addr-line>`] element, separated by a comma and
+        space (`, `).
+
+    `city`
+    :   City in which the organization is located; used only if
+        `street-address` is not given, in which case the value is
+        wrapped in a [`<city>`] element.
+
+    `country`
+    :   Country in which the organization is located; used as the
+        value of a [`<country>`] element.
+
+    `country-code`
+    :   Two letter ISO-3166-1 country identifier; used as the
+        [`country`][attr:country] attribute in element [`<country>`]
+        (if the latter is present).
 
 `copyright`
 :   Licensing and copyright information. This information is
@@ -87,12 +179,13 @@ Metadata Values
     pass these components directly.
 
     The publication date is recorded in the document via the
-    [`<pub-date>`][elem:pub-date] element and its sub-elements. The
-    [`pub-type`][attr:pub-type] attribute is always set to `epub`.
+    [`<pub-date>`] element and its sub-elements. The
+    [`publication-format`][attr:publication-format] attribute is
+    always set to `electronic`.
 
     `iso-8601`
     :   ISO-8601 representation of the publication date. Used as the
-        value of the [`pub-date`][elem:pub-date] element's
+        value of the [`<pub-date>`] element's
         [`iso-8601-date`][attr:iso-8601-date] attribute.
 
         This value is set automatically if pandoc can parse the
@@ -105,6 +198,12 @@ Metadata Values
 
         The values are set automatically if pandoc can parse the
         `date` value as a date.
+
+    `type`
+    :   The type of event marked by this date. The value is set as
+        the [`date-type`][attr:date-type] attribute on the
+        [`<pub-date>`] element and defaults to "pub" if not
+        specified.
 
 `article`
 :   information concerning the article that identifies or describes
@@ -215,12 +314,14 @@ Metadata Values
     `pissn`
     :   ISSN identifier of the publication's print version. Used as
         content of the [`<issn>`][elem:issn] element with the
-        [`pub-type`][attr:pub-type] attribute set to `ppub`.
+        [`publication-format`][attr:publication-format] attribute
+        set to `print`.
 
     `eissn`
     :   ISSN identifier of the publication's electronic version.
         Used as content of the [`<issn>`][elem:issn] element with
-        the [`pub-type`][attr:pub-type] attribute set to `epub`.
+        the [`publication-format`][attr:publication-format]
+        attribute set to `electronic`.
 
     `publisher-name`
     :   name of the publishing entity (person, company, or other).
@@ -258,13 +359,18 @@ Required metadata values:
   `journal.pmc`.
 - One or more of `journal.pissn`, `journal.eissn`.
 
+[Ringgold]: https://ringgold.com/
+[attr:content-type]: https://jats.nlm.nih.gov/publishing/tag-library/1.2/attribute/content-type.html
+[attr:date-type]: https://jats.nlm.nih.gov/publishing/tag-library/1.2/attribute/date-type.html
+[attr:equal-contrib]: https://jats.nlm.nih.gov/publishing/tag-library/1.2/attribute/equal-contrib.html
 [attr:fn-type]: https://jats.nlm.nih.gov/publishing/tag-library/1.2/attribute/fn-type.html
+[attr:institution-id-type]: https://jats.nlm.nih.gov/publishing/tag-library/1.2/attribute/institution-id-type.html
 [attr:iso-8601-date]: https://jats.nlm.nih.gov/publishing/tag-library/1.2/attribute/iso-8601-date.html
 [attr:journal-id-type]: https://jats.nlm.nih.gov/publishing/tag-library/1.2/attribute/journal-id-type.html
 [attr:kwd-group-type]: https://jats.nlm.nih.gov/publishing/tag-library/1.2/attribute/kwd-group-type.html
 [attr:license-type]: https://jats.nlm.nih.gov/publishing/tag-library/1.2/attribute/license-type.html
 [attr:pub-id-type]: https://jats.nlm.nih.gov/publishing/tag-library/1.2/attribute/pub-id-type.html
-[attr:pub-type]: https://jats.nlm.nih.gov/publishing/tag-library/1.2/attribute/pub-type.html
+[attr:publication-format]: https://jats.nlm.nih.gov/publishing/tag-library/1.2/attribute/publication-format.html
 [attr:ref-type]: https://jats.nlm.nih.gov/publishing/tag-library/1.2/attribute/ref-type.html
 [attr:rid]: https://jats.nlm.nih.gov/publishing/tag-library/1.2/attribute/rid.html
 [attr:subj-group-type]: https://jats.nlm.nih.gov/publishing/tag-library/1.2/attribute/subj-group-type.html
@@ -289,7 +395,6 @@ Required metadata values:
 [elem:license]: https://jats.nlm.nih.gov/publishing/tag-library/1.2/element/license.html
 [elem:notes]: https://jats.nlm.nih.gov/publishing/tag-library/1.2/element/notes.html
 [elem:permissions]: https://jats.nlm.nih.gov/publishing/tag-library/1.2/element/permissions.html
-[elem:pub-date]: https://jats.nlm.nih.gov/publishing/tag-library/1.2/element/pub-date.html
 [elem:publisher-loc]: https://jats.nlm.nih.gov/publishing/tag-library/1.2/element/publisher-loc.html
 [elem:publisher-name]: https://jats.nlm.nih.gov/publishing/tag-library/1.2/element/publisher-name.html
 [elem:string-name]: https://jats.nlm.nih.gov/publishing/tag-library/1.2/element/string-name.html
@@ -297,3 +402,13 @@ Required metadata values:
 [elem:subject]: https://jats.nlm.nih.gov/publishing/tag-library/1.2/element/subject.html
 [elem:surname]: https://jats.nlm.nih.gov/publishing/tag-library/1.2/element/surname.html
 [elem:xref]: https://jats.nlm.nih.gov/publishing/tag-library/1.2/element/xref.html
+
+[`<addr-line>`]: https://jats.nlm.nih.gov/publishing/tag-library/1.2/element/addr-line.html
+[`<aff>`]: https://jats.nlm.nih.gov/publishing/tag-library/1.2/element/aff.html
+[`<city>`]: https://jats.nlm.nih.gov/publishing/tag-library/1.2/element/city.html
+[`<contrib>`]: https://jats.nlm.nih.gov/publishing/tag-library/1.2/element/contrib.html
+[`<country>`]: https://jats.nlm.nih.gov/publishing/tag-library/1.2/element/country.html
+[`<institution-id>`]: https://jats.nlm.nih.gov/publishing/tag-library/1.2/element/institution-id.html
+[`<institution-wrap>`]: https://jats.nlm.nih.gov/publishing/tag-library/1.2/element/institution-wrap.html
+[`<institution>`]: https://jats.nlm.nih.gov/publishing/tag-library/1.2/element/institution.html
+[`<pub-date>`]: https://jats.nlm.nih.gov/publishing/tag-library/1.2/element/pub-date.html

@@ -14,6 +14,7 @@
 - ignore: {name: "Reduce duplication"} # TODO: could be more fine-grained
 - ignore: {name: "Use &&&"}
 - ignore: {name: "Use String"}
+- ignore: {name: "Use camelCase"}
 - ignore: {name: "Use fmap"}  # specific for GHC 7.8 compat
 - ignore: {name: "Use isDigit"}
 
@@ -38,13 +39,10 @@
     name: "Redundant return"
     within: Text.Pandoc.Citeproc.BibTeX
 
-# TODO: check
+# With recent hlint this rule has given false positives on TH
 - ignore:
     name: "Redundant bracket"
-    within:
-      - Text.Pandoc.Citeproc
-      - Text.Pandoc.Citeproc.BibTeX
-      - Text.Pandoc.Citeproc.MetaValue
+
 
 - ignore:
     name: "Use <$>"
@@ -60,6 +58,7 @@
       - Text.Pandoc.Citeproc
       - Text.Pandoc.Extensions
       - Text.Pandoc.Lua.Marshaling.Version
+      - Text.Pandoc.Lua.Module.Pandoc
       - Text.Pandoc.Lua.Module.Utils
       - Text.Pandoc.Readers.Odt.ContentReader
       - Text.Pandoc.Readers.Odt.Namespaces
@@ -103,6 +102,10 @@
       - Text.Pandoc.ImageSize
       - Text.Pandoc.Readers.Markdown
       - Text.Pandoc.Readers.RST
+
+# fromRight is only in base >= 4.10
+- ignore:
+    name: "Use fromRight"
 
 # Define some custom infix operators
 # - fixity: infixr 3 ~^#^~

@@ -4,7 +4,7 @@
 {-# LANGUAGE ViewPatterns        #-}
 {- |
    Module      : Text.Pandoc.Readers.RST
-   Copyright   : Copyright (C) 2006-2020 John MacFarlane
+   Copyright   : Copyright (C) 2006-2021 John MacFarlane
    License     : GNU GPL, version 2 or above
 
    Maintainer  : John MacFarlane <jgm@berkeley.edu>
@@ -28,7 +28,7 @@ import qualified Data.Text as T
 import Text.Pandoc.Builder (Blocks, Inlines, fromList, setMeta, trimInlines)
 import qualified Text.Pandoc.Builder as B
 import Text.Pandoc.Class.PandocMonad (PandocMonad, fetchItem,
-                                      readFileFromDirs, getCurrentTime)
+                                      readFileFromDirs, getTimestamp)
 import Text.Pandoc.CSV (CSVOptions (..), defaultCSVOptions, parseCSV)
 import Text.Pandoc.Definition
 import Text.Pandoc.Error
@@ -613,8 +613,9 @@ comment = try $ do
   string ".."
   skipMany1 spaceChar <|> (() <$ lookAhead newline)
   -- notFollowedBy' directiveLabel -- comment comes after directive so unnec.
-  manyTill anyChar blanklines
+  _ <- anyLine
   optional indentedBlock
+  optional blanklines
   return mempty
 
 directiveLabel :: Monad m => RSTParser m Text
@@ -685,7 +686,7 @@ directive' = do
         "replace" -> B.para <$>  -- consumed by substKey
                    parseInlineFromText (trim top)
         "date" -> B.para <$> do  -- consumed by substKey
-                     t <- getCurrentTime
+                     t <- getTimestamp
                      let format = case T.unpack (T.strip top) of
                                     [] -> "%Y-%m-%d"
                                     x  -> x
@@ -877,10 +878,11 @@ csvTableDirective top fields rawcsv = do
                     (bs, _) <- fetchItem u
                     return $ UTF8.toText bs
                   Nothing -> return rawcsv
-  let res = parseCSV opts (case explicitHeader of
-                              Just h  -> h <> "\n" <> rawcsv'
-                              Nothing -> rawcsv')
-  case res of
+  let header' = case explicitHeader of
+                  Just h  -> parseCSV defaultCSVOptions h
+                  Nothing -> Right []
+  let res = parseCSV opts rawcsv'
+  case (<>) <$> header' <*> res of
        Left e  ->
          throwError $ PandocParsecError "csv table" e
        Right rawrows -> do

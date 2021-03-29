@@ -4,7 +4,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {- |
    Module      : Text.Pandoc.PDF
-   Copyright   : Copyright (C) 2012-2020 John MacFarlane
+   Copyright   : Copyright (C) 2012-2021 John MacFarlane
    License     : GNU GPL, version 2 or above
 
    Maintainer  : John MacFarlane <jgm@berkeley.edu>
@@ -43,6 +43,7 @@ import Text.Pandoc.Definition
 import Text.Pandoc.Error (PandocError (PandocPDFProgramNotFoundError))
 import Text.Pandoc.MIME (getMimeType)
 import Text.Pandoc.Options (HTMLMathMethod (..), WriterOptions (..))
+import Text.Pandoc.Extensions (disableExtension, Extension(Ext_smart))
 import Text.Pandoc.Process (pipeProcess)
 import System.Process (readProcessWithExitCode)
 import Text.Pandoc.Shared (inDirectory, stringify, tshow)
@@ -114,7 +115,10 @@ makePDF program pdfargs writer opts doc =
         runIOorExplode $ do
           putCommonState commonState
           doc' <- handleImages opts tmpdir doc
-          source <- writer opts doc'
+          source <- writer opts{ writerExtensions = -- disable use of quote
+                                    -- ligatures to avoid bad ligatures like ?`
+                                    disableExtension Ext_smart
+                                     (writerExtensions opts) } doc'
           res <- case baseProg of
             "context" -> context2pdf verbosity program pdfargs tmpdir source
             "tectonic" -> tectonic2pdf verbosity program pdfargs tmpdir source
@@ -266,7 +270,7 @@ missingCharacterWarnings verbosity log' = do
         | isAscii c   = T.singleton c
         | otherwise   = T.pack $ c : " (U+" ++ printf "%04X" (ord c) ++ ")"
   let addCodePoint = T.concatMap toCodePoint
-  let warnings = [ addCodePoint (T.pack $ utf8ToString (BC.drop 19 l))
+  let warnings = [ addCodePoint (utf8ToText (BC.drop 19 l))
                  | l <- ls
                  , isMissingCharacterWarning l
                  ]
@@ -310,7 +314,7 @@ runTectonic verbosity program args' tmpDir' source = do
     env <- liftIO getEnvironment
     when (verbosity >= INFO) $ liftIO $
       showVerboseInfo (Just tmpDir) program programArgs env
-         (utf8ToString sourceBL)
+         (utf8ToText sourceBL)
     (exit, out) <- liftIO $ E.catch
       (pipeProcess (Just env) program programArgs sourceBL)
       (handlePDFProgramNotFound program)
@@ -381,7 +385,7 @@ runTeXProgram verbosity program args numRuns tmpDir' source = do
             (pipeProcess (Just env'') program programArgs BL.empty)
             (handlePDFProgramNotFound program)
           when (verbosity >= INFO) $ liftIO $ do
-            UTF8.hPutStrLn stderr $ "[makePDF] Run #" ++ show runNumber
+            UTF8.hPutStrLn stderr $ "[makePDF] Run #" <> tshow runNumber
             BL.hPutStr stderr out
             UTF8.hPutStr stderr "\n"
           if runNumber < numRuns
@@ -401,7 +405,7 @@ generic2pdf :: Verbosity
 generic2pdf verbosity program args source = do
   env' <- getEnvironment
   when (verbosity >= INFO) $
-    showVerboseInfo Nothing program args env' (T.unpack source)
+    showVerboseInfo Nothing program args env' source
   (exit, out) <- E.catch
     (pipeProcess (Just env') program args
                      (BL.fromStrict $ UTF8.fromText source))
@@ -490,19 +494,20 @@ showVerboseInfo :: Maybe FilePath
                 -> String
                 -> [String]
                 -> [(String, String)]
-                -> String
+                -> Text
                 -> IO ()
 showVerboseInfo mbTmpDir program programArgs env source = do
   case mbTmpDir of
     Just tmpDir -> do
       UTF8.hPutStrLn stderr "[makePDF] temp dir:"
-      UTF8.hPutStrLn stderr tmpDir
+      UTF8.hPutStrLn stderr (T.pack tmpDir)
     Nothing -> return ()
   UTF8.hPutStrLn stderr "[makePDF] Command line:"
-  UTF8.hPutStrLn stderr $ program ++ " " ++ unwords (map show programArgs)
+  UTF8.hPutStrLn stderr $
+       T.pack program <> " " <> T.pack (unwords (map show programArgs))
   UTF8.hPutStr stderr "\n"
   UTF8.hPutStrLn stderr "[makePDF] Environment:"
-  mapM_ (UTF8.hPutStrLn stderr . show) env
+  mapM_ (UTF8.hPutStrLn stderr . tshow) env
   UTF8.hPutStr stderr "\n"
   UTF8.hPutStrLn stderr "[makePDF] Source:"
   UTF8.hPutStrLn stderr source
@@ -513,8 +518,8 @@ handlePDFProgramNotFound program e
       E.throwIO $ PandocPDFProgramNotFoundError $ T.pack program
   | otherwise = E.throwIO e
 
-utf8ToString :: ByteString -> String
-utf8ToString lbs =
+utf8ToText :: ByteString -> Text
+utf8ToText lbs =
   case decodeUtf8' lbs of
-    Left _  -> BC.unpack lbs  -- if decoding fails, treat as latin1
-    Right t -> TL.unpack t
+    Left _  -> T.pack $ BC.unpack lbs  -- if decoding fails, treat as latin1
+    Right t -> TL.toStrict t

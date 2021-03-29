@@ -1,8 +1,7 @@
-{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedStrings #-}
 {- |
    Module      : Tests.Readers.HTML
-   Copyright   : © 2006-2020 John MacFarlane
+   Copyright   : © 2006-2021 John MacFarlane
    License     : GNU GPL, version 2 or above
 
    Maintainer  : John MacFarlane <jgm@berkeley.edu>
@@ -13,7 +12,6 @@ Tests for the HTML reader.
 -}
 module Tests.Readers.HTML (tests) where
 
-import Prelude
 import Data.Text (Text)
 import qualified Data.Text as T
 import Test.Tasty
@@ -21,8 +19,7 @@ import Test.Tasty.QuickCheck
 import Test.Tasty.Options (IsOption(defaultValue))
 import Tests.Helpers
 import Text.Pandoc
-import Text.Pandoc.Writers.Shared (toLegacyTable)
-import Text.Pandoc.Shared (isHeaderBlock, onlySimpleTableCells)
+import Text.Pandoc.Shared (isHeaderBlock)
 import Text.Pandoc.Arbitrary ()
 import Text.Pandoc.Builder
 import Text.Pandoc.Walk (walk)
@@ -40,14 +37,7 @@ makeRoundTrip RawBlock{} = Para [Str "raw block was here"]
 makeRoundTrip (Div attr bs) = Div attr $ filter (not . isHeaderBlock) bs
 -- avoids round-trip failures related to makeSections
 -- e.g. with [Div ("loc",[],[("a","11"),("b_2","a b c")]) [Header 3 ("",[],[]) []]]
-makeRoundTrip b@(Table _attr blkCapt specs thead tbody tfoot) =
-  let (_capt, _aligns, widths, headers, rows') =
-        toLegacyTable blkCapt specs thead tbody tfoot
-      isSimple = onlySimpleTableCells (headers:rows')
-  in
-     if all (== 0.0) widths && not isSimple
-        then Para [Str "weird table omitted"]
-        else b
+makeRoundTrip Table{} = Para [Str "table block was here"]
 makeRoundTrip x           = x
 
 removeRawInlines :: Inline -> Inline
@@ -61,7 +51,7 @@ roundTrip b = d'' == d'''
         d' = rewrite d
         d'' = rewrite d'
         d''' = rewrite d''
-        rewrite = html . T.pack . (++ "\n") . T.unpack .
+        rewrite = html . (`T.snoc` '\n') .
                   purely (writeHtml5String def
                             { writerWrapText = WrapPreserve })
 

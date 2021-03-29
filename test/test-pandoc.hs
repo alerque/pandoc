@@ -1,9 +1,12 @@
-{-# LANGUAGE NoImplicitPrelude #-}
 {-# OPTIONS_GHC -Wall #-}
 
 module Main where
 
-import Prelude
+import System.Environment (getArgs, getExecutablePath)
+import qualified Control.Exception as E
+import Text.Pandoc.App (convertWithOpts, defaultOpts, options,
+                        parseOptionsFromArgs)
+import Text.Pandoc.Error (handleError)
 import GHC.IO.Encoding
 import Test.Tasty
 import qualified Tests.Command
@@ -48,12 +51,11 @@ import qualified Tests.Writers.RST
 import qualified Tests.Writers.AnnotatedTable
 import qualified Tests.Writers.SILE
 import qualified Tests.Writers.TEI
-import Tests.Helpers (findPandoc)
 import Text.Pandoc.Shared (inDirectory)
 
 tests :: FilePath -> TestTree
 tests pandocPath = testGroup "pandoc tests"
-        [ Tests.Command.tests pandocPath
+        [ Tests.Command.tests
         , testGroup "Old" (Tests.Old.tests pandocPath)
         , testGroup "Shared" Tests.Shared.tests
         , testGroup "Writers"
@@ -106,7 +108,15 @@ tests pandocPath = testGroup "pandoc tests"
 main :: IO ()
 main = do
   setLocaleEncoding utf8
-  inDirectory "test" $ do
-    fp <- findPandoc
-    putStrLn $ "Using pandoc executable at " ++ fp
-    defaultMain $ tests fp
+  args <- getArgs
+  case args of
+    "--emulate":args' -> -- emulate pandoc executable
+          E.catch
+            (parseOptionsFromArgs options defaultOpts "pandoc" args' >>=
+              convertWithOpts)
+            (handleError . Left)
+    _ -> inDirectory "test" $ do
+           fp <- getExecutablePath
+           -- putStrLn $ "Using pandoc executable at " ++ fp
+           defaultMain $ tests fp
+

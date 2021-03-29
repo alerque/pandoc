@@ -1,8 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {- |
    Module      : Text.Pandoc.Readers.CommonMark
-   Copyright   : Copyright (C) 2015-2020 John MacFarlane
+   Copyright   : Copyright (C) 2015-2021 John MacFarlane
    License     : GNU GPL, version 2 or above
 
    Maintainer  : John MacFarlane <jgm@berkeley.edu>
@@ -25,17 +26,56 @@ import Text.Pandoc.Definition
 import Text.Pandoc.Builder as B
 import Text.Pandoc.Options
 import Text.Pandoc.Error
+import Text.Pandoc.Readers.Metadata (yamlMetaBlock)
 import Control.Monad.Except
 import Data.Functor.Identity (runIdentity)
+import Data.Typeable
+import Text.Pandoc.Parsing (runParserT, getPosition, sourceLine,
+                            runF, defaultParserState, take1WhileP, option)
+import qualified Data.Text as T
 
 -- | Parse a CommonMark formatted string into a 'Pandoc' structure.
 readCommonMark :: PandocMonad m => ReaderOptions -> Text -> m Pandoc
-readCommonMark opts s = do
-  let res = runIdentity $
-              commonmarkWith (foldr ($) defaultSyntaxSpec exts) "input" s
-  case res of
-    Left err -> throwError $ PandocParsecError s err
-    Right (Cm bls :: Cm () Blocks) -> return $ B.doc bls
+readCommonMark opts s
+  | isEnabled Ext_yaml_metadata_block opts
+  , "---" `T.isPrefixOf` s = do
+       let metaValueParser = do
+             inp <- option "" $ take1WhileP (const True)
+             case runIdentity
+                    (commonmarkWith (specFor opts) "metadata value" inp) of
+                    Left _ -> mzero
+                    Right (Cm bls :: Cm () Blocks)
+                             -> return $ return $ B.toMetaValue bls
+       res <- runParserT (do meta <- yamlMetaBlock metaValueParser
+                             pos <- getPosition
+                             return (meta, pos))
+                         defaultParserState "YAML metadata" s
+       case res of
+         Left _ -> readCommonMarkBody opts s
+         Right (meta, pos) -> do
+           let dropLines 0 = id
+               dropLines n = dropLines (n - 1) . T.drop 1 . T.dropWhile (/='\n')
+           let metaLines = sourceLine pos - 1
+           let body = T.replicate metaLines "\n" <> dropLines metaLines s
+           Pandoc _ bs <- readCommonMarkBody opts body
+           return $ Pandoc (runF meta defaultParserState) bs
+  | otherwise = readCommonMarkBody opts s
+
+readCommonMarkBody :: PandocMonad m => ReaderOptions -> Text -> m Pandoc
+readCommonMarkBody opts s
+  | isEnabled Ext_sourcepos opts =
+    case runIdentity (commonmarkWith (specFor opts) "" s) of
+      Left err -> throwError $ PandocParsecError s err
+      Right (Cm bls :: Cm SourceRange Blocks) -> return $ B.doc bls
+  | otherwise =
+    case runIdentity (commonmarkWith (specFor opts) "" s) of
+      Left err -> throwError $ PandocParsecError s err
+      Right (Cm bls :: Cm () Blocks) -> return $ B.doc bls
+
+specFor :: (Monad m, Typeable m, Typeable a,
+            Rangeable (Cm a Inlines), Rangeable (Cm a Blocks))
+        => ReaderOptions -> SyntaxSpec m (Cm a Inlines) (Cm a Blocks)
+specFor opts = foldr ($) defaultSyntaxSpec exts
  where
   exts = [ (hardLineBreaksSpec <>) | isEnabled Ext_hard_line_breaks opts ] ++
          [ (smartPunctuationSpec <>) | isEnabled Ext_smart opts ] ++

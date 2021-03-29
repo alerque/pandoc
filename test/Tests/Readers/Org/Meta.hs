@@ -1,8 +1,7 @@
-{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedStrings #-}
 {- |
    Module      : Tests.Readers.Org.Meta
-   Copyright   : © 2014-2020 Albert Krewinkel
+   Copyright   : © 2014-2021 Albert Krewinkel
    License     : GNU GPL, version 2 or above
 
    Maintainer  : Albert Krewinkel <albert@zeitkraut.de>
@@ -13,7 +12,6 @@ Tests parsing of org meta data (mostly lines starting with @#+@).
 -}
 module Tests.Readers.Org.Meta (tests) where
 
-import Prelude
 import Test.Tasty (TestTree, testGroup)
 import Tests.Helpers ((=?>))
 import Tests.Readers.Org.Shared ((=:), spcSep)
@@ -111,6 +109,20 @@ tests =
     , "Institute" =:
       "#+institute: ACME Inc." =?>
       Pandoc (setMeta "institute" ("ACME Inc." :: Inlines) nullMeta) mempty
+
+    , "Document language" =:
+      "#+LANGUAGE: de-DE" =?>
+      Pandoc (setMeta "lang" (MetaString "de-DE") nullMeta) mempty
+
+    , testGroup "Todo sequences"
+      [ "not included in document" =:
+        "#+todo: WAITING | FINISHED" =?>
+        Pandoc mempty mempty
+
+      , "can contain multiple pipe characters" =:
+        "#+todo: UNFINISHED | RESEARCH | NOTES | CHART\n" =?>
+        Pandoc mempty mempty
+      ]
 
     , testGroup "LaTeX"
       [ "LATEX_HEADER" =:
@@ -266,7 +278,8 @@ tests =
 
   , "Search links are read as emph" =:
       "[[Wally][Where's Wally?]]" =?>
-      para (emph $ "Where's" <> space <> "Wally?")
+      para (spanWith ("", ["spurious-link"], [("target", "Wally")])
+                     (emph $ "Where's" <> space <> "Wally?"))
 
   , "Link to nonexistent anchor" =:
       T.unlines [ "<<link-here>> Target."
@@ -274,5 +287,6 @@ tests =
                 , "[[link$here][See here!]]"
                 ] =?>
       (para (spanWith ("link-here", [], []) mempty <> "Target.") <>
-       para (emph ("See" <> space <> "here!")))
+       para (spanWith ("", ["spurious-link"], [("target", "link$here")])
+                      (emph ("See" <> space <> "here!"))))
   ]

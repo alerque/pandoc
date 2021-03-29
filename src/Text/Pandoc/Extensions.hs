@@ -6,7 +6,7 @@
 {-# LANGUAGE OverloadedStrings          #-}
 {- |
    Module      : Text.Pandoc.Extensions
-   Copyright   : Copyright (C) 2012-2020 John MacFarlane
+   Copyright   : Copyright (C) 2012-2021 John MacFarlane
    License     : GNU GPL, version 2 or above
 
    Maintainer  : John MacFarlane <jgm@berkeley.edu>
@@ -34,6 +34,7 @@ module Text.Pandoc.Extensions ( Extension(..)
 where
 import Data.Bits (clearBit, setBit, testBit, (.|.))
 import Data.Data (Data)
+import Data.List (foldl')
 import qualified Data.Text as T
 import Data.Typeable (Typeable)
 import GHC.Generics (Generic)
@@ -88,6 +89,7 @@ data Extension =
                                   --   does not affect readers/writers directly; it causes
                                   --   the eastAsianLineBreakFilter to be applied after
                                   --   parsing, in Text.Pandoc.App.convertWithOpts.
+    | Ext_element_citations   -- ^ Use element-citation elements for JATS citations
     | Ext_emoji               -- ^ Support emoji like :smile:
     | Ext_empty_paragraphs -- ^ Allow empty paragraphs
     | Ext_epub_html_exts      -- ^ Recognise the EPUB extended version of HTML
@@ -151,9 +153,12 @@ data Extension =
     | Ext_tex_math_dollars    -- ^ TeX math between $..$ or $$..$$
     | Ext_tex_math_double_backslash  -- ^ TeX math btw \\(..\\) \\[..\\]
     | Ext_tex_math_single_backslash  -- ^ TeX math btw \(..\) \[..\]
+    | Ext_xrefs_name          -- ^ Use xrefs with names
+    | Ext_xrefs_number        -- ^ Use xrefs with numbers
     | Ext_yaml_metadata_block -- ^ YAML metadata block
     | Ext_gutenberg           -- ^ Use Project Gutenberg conventions for plain
     | Ext_attributes          -- ^ Generic attribute syntax
+    | Ext_sourcepos           -- ^ Include source position attributes
     deriving (Show, Read, Enum, Eq, Ord, Bounded, Data, Typeable, Generic)
 
 -- | Extensions to be used with pandoc-flavored markdown.
@@ -354,13 +359,14 @@ getDefaultExtensions "gfm"             = extensionsFromList
   , Ext_strikeout
   , Ext_task_lists
   , Ext_emoji
+  , Ext_yaml_metadata_block
   ]
 getDefaultExtensions "commonmark"      = extensionsFromList
                                           [Ext_raw_html]
 getDefaultExtensions "commonmark_x"    = extensionsFromList
   [ Ext_pipe_tables
   , Ext_raw_html
-  , Ext_auto_identifiers
+  , Ext_gfm_auto_identifiers
   , Ext_strikeout
   , Ext_task_lists
   , Ext_emoji
@@ -379,10 +385,11 @@ getDefaultExtensions "commonmark_x"    = extensionsFromList
   , Ext_raw_attribute
   , Ext_implicit_header_references
   , Ext_attributes
-  , Ext_fenced_code_attributes
+  , Ext_yaml_metadata_block
   ]
 getDefaultExtensions "org"             = extensionsFromList
                                           [Ext_citations,
+                                           Ext_task_lists,
                                            Ext_auto_identifiers]
 getDefaultExtensions "html"            = extensionsFromList
                                           [Ext_auto_identifiers,
@@ -418,6 +425,11 @@ getDefaultExtensions "textile"         = extensionsFromList
                                            Ext_smart,
                                            Ext_raw_html,
                                            Ext_auto_identifiers]
+getDefaultExtensions "jats"            = extensionsFromList
+                                          [Ext_auto_identifiers]
+getDefaultExtensions "jats_archiving"  = getDefaultExtensions "jats"
+getDefaultExtensions "jats_publishing" = getDefaultExtensions "jats"
+getDefaultExtensions "jats_articleauthoring" = getDefaultExtensions "jats"
 getDefaultExtensions "opml"            = pandocExtensions -- affects notes
 getDefaultExtensions _                 = extensionsFromList
                                           [Ext_auto_identifiers]
@@ -474,6 +486,8 @@ getAllExtensions f = universalExtensions <> getAll f
   getAll "opendocument"    = extensionsFromList
     [ Ext_empty_paragraphs
     , Ext_native_numbering
+    , Ext_xrefs_name
+    , Ext_xrefs_number
     ]
   getAll "odt"             = getAll "opendocument" <> autoIdExtensions
   getAll "muse"            = autoIdExtensions <>
@@ -483,9 +497,10 @@ getAllExtensions f = universalExtensions <> getAll f
   getAll "plain"           = allMarkdownExtensions
   getAll "gfm"             = getAll "commonmark"
   getAll "commonmark"      =
-    autoIdExtensions <>
     extensionsFromList
-    [ Ext_pipe_tables
+    [ Ext_gfm_auto_identifiers
+    , Ext_ascii_identifiers
+    , Ext_pipe_tables
     , Ext_autolink_bare_uris
     , Ext_strikeout
     , Ext_task_lists
@@ -506,13 +521,15 @@ getAllExtensions f = universalExtensions <> getAll f
     , Ext_raw_attribute
     , Ext_implicit_header_references
     , Ext_attributes
-    , Ext_fenced_code_attributes
+    , Ext_sourcepos
+    , Ext_yaml_metadata_block
     ]
   getAll "commonmark_x"    = getAll "commonmark"
   getAll "org"             = autoIdExtensions <>
     extensionsFromList
     [ Ext_citations
     , Ext_smart
+    , Ext_task_lists
     ]
   getAll "html"            = autoIdExtensions <>
     extensionsFromList
@@ -556,6 +573,14 @@ getAllExtensions f = universalExtensions <> getAll f
     , Ext_smart
     , Ext_raw_tex
     ]
+  getAll "jats"            =
+    extensionsFromList
+    [ Ext_auto_identifiers
+    , Ext_element_citations
+    ]
+  getAll "jats_archiving"  = getAll "jats"
+  getAll "jats_publishing" = getAll "jats"
+  getAll "jats_articleauthoring" = getAll "jats"
   getAll "opml"            = allMarkdownExtensions -- affects notes
   getAll "twiki"           = autoIdExtensions <>
     extensionsFromList
@@ -581,7 +606,7 @@ parseFormatSpec :: T.Text
 parseFormatSpec = parse formatSpec ""
   where formatSpec = do
           name <- formatName
-          (extsToEnable, extsToDisable) <- foldl (flip ($)) ([],[]) <$>
+          (extsToEnable, extsToDisable) <- foldl' (flip ($)) ([],[]) <$>
                                              many extMod
           return (T.pack name, reverse extsToEnable, reverse extsToDisable)
         formatName = many1 $ noneOf "-+"

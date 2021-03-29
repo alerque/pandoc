@@ -9,7 +9,7 @@
 {-# LANGUAGE OverloadedStrings          #-}
 {- |
    Module      : Text.Pandoc.Parsing
-   Copyright   : Copyright (C) 2006-2020 John MacFarlane
+   Copyright   : Copyright (C) 2006-2021 John MacFarlane
    License     : GNU GPL, version 2 or above
 
    Maintainer  : John MacFarlane <jgm@berkeley.edu>
@@ -112,7 +112,6 @@ module Text.Pandoc.Parsing ( take1WhileP,
                              citeKey,
                              Parser,
                              ParserT,
-                             F,
                              Future(..),
                              runF,
                              askF,
@@ -190,7 +189,7 @@ where
 
 import Control.Monad.Identity
 import Control.Monad.Reader
-import Data.Char (chr, isAlphaNum, isAscii, isAsciiUpper,
+import Data.Char (chr, isAlphaNum, isAscii, isAsciiUpper, isAsciiLower,
                   isPunctuation, isSpace, ord, toLower, toUpper)
 import Data.Default
 import Data.Functor (($>))
@@ -228,8 +227,6 @@ type ParserT = ParsecT
 -- in the parser state.
 newtype Future s a = Future { runDelayed :: Reader s a }
   deriving (Monad, Applicative, Functor)
-
-type F = Future ParserState
 
 runF :: Future s a -> s -> a
 runF = runReader . runDelayed
@@ -443,7 +440,14 @@ spaceChar = satisfy $ \c -> c == ' ' || c == '\t'
 
 -- | Parses a nonspace, nonnewline character.
 nonspaceChar :: Stream s m Char => ParserT s st m Char
-nonspaceChar = noneOf ['\t', '\n', ' ', '\r']
+nonspaceChar = satisfy (not . isSpaceChar)
+
+isSpaceChar :: Char -> Bool
+isSpaceChar ' '  = True
+isSpaceChar '\t' = True
+isSpaceChar '\n' = True
+isSpaceChar '\r' = True
+isSpaceChar _    = False
 
 -- | Skips zero or more spaces or tabs.
 skipSpaces :: Stream s m Char => ParserT s st m ()
@@ -513,7 +517,7 @@ parseFromString :: (Stream s m Char, IsString s)
                 -> ParserT s st m r
 parseFromString parser str = do
   oldPos <- getPosition
-  setPosition $ initialPos "chunk"
+  setPosition $ initialPos " chunk"
   oldInput <- getInput
   setInput $ fromString $ T.unpack str
   result <- parser
@@ -634,7 +638,7 @@ uri = try $ do
   scheme <- uriScheme
   char ':'
   -- Avoid parsing e.g. "**Notes:**" as a raw URI:
-  notFollowedBy (oneOf "*_]")
+  notFollowedBy $ satisfy (\c -> c == '*' || c == '_' || c == ']')
   -- We allow sentence punctuation except at the end, since
   -- we don't want the trailing '.' in 'http://google.com.' We want to allow
   -- http://en.wikipedia.org/wiki/State_of_emergency_(disambiguation)
@@ -648,7 +652,20 @@ uri = try $ do
   let uri' = scheme <> ":" <> fromEntities str'
   return (uri', escapeURI uri')
   where
-    wordChar = alphaNum <|> oneOf "#$%+/@\\_-&="
+    isWordChar '#' = True
+    isWordChar '$' = True
+    isWordChar '%' = True
+    isWordChar '+' = True
+    isWordChar '/' = True
+    isWordChar '@' = True
+    isWordChar '\\' = True
+    isWordChar '_' = True
+    isWordChar '-' = True
+    isWordChar '&' = True
+    isWordChar '=' = True
+    isWordChar c   = isAlphaNum c
+
+    wordChar = satisfy isWordChar
     percentEscaped = try $ (:) <$> char '%' <*> many1 hexDigit
     entity = try $ pure <$> characterReference
     punct = try $ many1 (char ',') <|> fmap pure (satisfy (\c -> not (isSpace c) && c /= '<' && c /= '>'))
@@ -663,7 +680,9 @@ mathInlineWith :: Stream s m Char  => Text -> Text -> ParserT s st m Text
 mathInlineWith op cl = try $ do
   textStr op
   when (op == "$") $ notFollowedBy space
-  words' <- many1Till (countChar 1 (noneOf " \t\n\\")
+  words' <- many1Till (
+                       (T.singleton <$>
+                          satisfy (\c -> not (isSpaceChar c || c == '\\')))
                    <|> (char '\\' >>
                            -- This next clause is needed because \text{..} can
                            -- contain $, \(\), etc.
@@ -671,7 +690,7 @@ mathInlineWith op cl = try $ do
                                  (("\\text" <>) <$> inBalancedBraces 0 ""))
                             <|>  (\c -> T.pack ['\\',c]) <$> anyChar))
                    <|> do (blankline <* notFollowedBy' blankline) <|>
-                             (oneOf " \t" <* skipMany (oneOf " \t"))
+                             (spaceChar <* skipMany spaceChar)
                           notFollowedBy (char '$')
                           return " "
                     ) (try $ textStr cl)
@@ -701,7 +720,8 @@ mathInlineWith op cl = try $ do
 mathDisplayWith :: Stream s m Char => Text -> Text -> ParserT s st m Text
 mathDisplayWith op cl = try $ fmap T.pack $ do
   textStr op
-  many1Till (noneOf "\n" <|> (newline <* notFollowedBy' blankline)) (try $ textStr cl)
+  many1Till (satisfy (/= '\n') <|> (newline <* notFollowedBy' blankline))
+            (try $ textStr cl)
 
 mathDisplay :: (HasReaderOptions st, Stream s m Char)
             => ParserT s st m Text
@@ -821,13 +841,13 @@ defaultNum = do
 -- | Parses a lowercase letter and returns (LowerAlpha, number).
 lowerAlpha :: Stream s m Char => ParserT s st m (ListNumberStyle, Int)
 lowerAlpha = do
-  ch <- oneOf ['a'..'z']
+  ch <- satisfy isAsciiLower
   return (LowerAlpha, ord ch - ord 'a' + 1)
 
 -- | Parses an uppercase letter and returns (UpperAlpha, number).
 upperAlpha :: Stream s m Char => ParserT s st m (ListNumberStyle, Int)
 upperAlpha = do
-  ch <- oneOf ['A'..'Z']
+  ch <- satisfy isAsciiUpper
   return (UpperAlpha, ord ch - ord 'A' + 1)
 
 -- | Parses a roman numeral i or I
@@ -1046,24 +1066,24 @@ gridTableHeader :: (Stream s m Char, Monad mf, IsString s, HasLastStrPosition st
                 => Bool -- ^ Headerless table
                 -> ParserT s st m (mf Blocks)
                 -> ParserT s st m (mf [Blocks], [Alignment], [Int])
-gridTableHeader headless blocks = try $ do
+gridTableHeader True _ = do
   optional blanklines
   dashes <- gridDashedLines '-'
-  rawContent  <- if headless
-                    then return $ repeat ""
-                    else many1
-                         (notFollowedBy (gridTableSep '=') >> char '|' >>
+  let aligns = map snd dashes
+  let lines'   = map (snd . fst) dashes
+  let indices  = scanl (+) 0 lines'
+  return (return [], aligns, indices)
+gridTableHeader False blocks = try $ do
+  optional blanklines
+  dashes <- gridDashedLines '-'
+  rawContent  <- many1 (notFollowedBy (gridTableSep '=') >> char '|' >>
                            T.pack <$> many1Till anyChar newline)
-  underDashes <- if headless
-                    then return dashes
-                    else gridDashedLines '='
+  underDashes <- gridDashedLines '='
   guard $ length dashes == length underDashes
   let lines'   = map (snd . fst) underDashes
   let indices  = scanl (+) 0 lines'
   let aligns   = map snd underDashes
-  let rawHeads = if headless
-                    then replicate (length underDashes) ""
-                    else map (T.unlines . map trim) $ transpose
+  let rawHeads = map (T.unlines . map trim) $ transpose
                        $ map (gridTableSplitLine indices) rawContent
   heads <- sequence <$> mapM (parseFromString' blocks . trim) rawHeads
   return (heads, aligns, indices)
@@ -1105,13 +1125,13 @@ gridTableFooter = optional blanklines
 ---
 
 -- | Removes the ParsecT layer from the monad transformer stack
-readWithM :: (Stream s m Char, ToText s)
-          => ParserT s st m a    -- ^ parser
+readWithM :: Monad m
+          => ParserT Text st m a -- ^ parser
           -> st                  -- ^ initial state
-          -> s                   -- ^ input
+          -> Text                -- ^ input
           -> m (Either PandocError a)
 readWithM parser state input =
-    mapLeft (PandocParsecError $ toText input) `liftM` runParserT parser state "source" input
+    mapLeft (PandocParsecError input) <$> runParserT parser state "source" input
 
 -- | Parse a string with a given parser and state
 readWith :: Parser Text st a
@@ -1125,7 +1145,7 @@ testStringWith :: Show a
                => ParserT Text ParserState Identity a
                -> Text
                -> IO ()
-testStringWith parser str = UTF8.putStrLn $ show $
+testStringWith parser str = UTF8.putStrLn $ tshow $
                             readWith parser defaultParserState str
 
 -- | Parsing options.
@@ -1146,7 +1166,7 @@ data ParserState = ParserState
       stateInNote            :: Bool,          -- ^ True if parsing note contents
       stateNoteNumber        :: Int,           -- ^ Last note number for citations
       stateMeta              :: Meta,          -- ^ Document metadata
-      stateMeta'             :: F Meta,        -- ^ Document metadata
+      stateMeta'             :: Future ParserState Meta, -- ^ Document metadata
       stateCitations         :: M.Map Text Text, -- ^ RST-style citations
       stateHeaderTable       :: [HeaderType],  -- ^ Ordered list of header types used
       stateIdentifiers       :: Set.Set Text, -- ^ Header identifiers used
@@ -1325,7 +1345,7 @@ data QuoteContext
 
 type NoteTable = [(Text, Text)]
 
-type NoteTable' = M.Map Text (SourcePos, F Blocks)
+type NoteTable' = M.Map Text (SourcePos, Future ParserState Blocks)
 -- used in markdown reader
 
 newtype Key = Key Text deriving (Show, Read, Eq, Ord)

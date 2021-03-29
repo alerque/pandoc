@@ -3,7 +3,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {- |
    Module      : Text.Pandoc.Writers.Shared
-   Copyright   : Copyright (C) 2013-2020 John MacFarlane
+   Copyright   : Copyright (C) 2013-2021 John MacFarlane
    License     : GNU GPL, version 2 or above
 
    Maintainer  : John MacFarlane <jgm@berkeley.edu>
@@ -44,6 +44,7 @@ import Control.Monad (zipWithM)
 import Data.Aeson (ToJSON (..), encode)
 import Data.Char (chr, ord, isSpace)
 import Data.List (groupBy, intersperse, transpose, foldl')
+import Data.List.NonEmpty (NonEmpty(..), nonEmpty)
 import Data.Text.Conversions (FromText(..))
 import qualified Data.Map as M
 import qualified Data.Text as T
@@ -109,8 +110,7 @@ metaValueToVal blockWriter inlineWriter (MetaMap metamap) =
   MapVal . Context <$> mapM (metaValueToVal blockWriter inlineWriter) metamap
 metaValueToVal blockWriter inlineWriter (MetaList xs) = ListVal <$>
   mapM (metaValueToVal blockWriter inlineWriter) xs
-metaValueToVal _ _ (MetaBool True) = return $ SimpleVal "true"
-metaValueToVal _ _ (MetaBool False) = return NullVal
+metaValueToVal _ _ (MetaBool b) = return $ BoolVal b
 metaValueToVal _ inlineWriter (MetaString s) =
    SimpleVal <$> inlineWriter (Builder.toList (Builder.text s))
 metaValueToVal blockWriter _ (MetaBlocks bs) = SimpleVal <$> blockWriter bs
@@ -225,7 +225,7 @@ gridTable :: (Monad m, HasChars a)
           -> m (Doc a)
 gridTable opts blocksToDoc headless aligns widths headers rows = do
   -- the number of columns will be used in case of even widths
-  let numcols = maximum (length aligns : length widths :
+  let numcols = maximum (length aligns :| length widths :
                            map length (headers:rows))
   let officialWidthsInChars widths' = map (
                         (\x -> if x < 1 then 1 else x) .
@@ -254,8 +254,7 @@ gridTable opts blocksToDoc headless aligns widths headers rows = do
   let handleFullWidths widths' = do
         rawHeaders' <- mapM (blocksToDoc opts) headers
         rawRows' <- mapM (mapM (blocksToDoc opts)) rows
-        let numChars [] = 0
-            numChars xs = maximum . map offset $ xs
+        let numChars = maybe 0 maximum . nonEmpty . map offset
         let minWidthsInChars =
                 map numChars $ transpose (rawHeaders' : rawRows')
         let widthsInChars' = zipWith max

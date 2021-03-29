@@ -1,8 +1,7 @@
-{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedStrings #-}
 {- |
    Module      : Tests.Shared
-   Copyright   : © 2006-2020 John MacFarlane
+   Copyright   : © 2006-2021 John MacFarlane
    License     : GNU GPL, version 2 or above
 
    Maintainer  : John MacFarlane <jgm@berkeley@edu>
@@ -13,7 +12,6 @@ Tests for functions used in many parts of the library.
 -}
 module Tests.Shared (tests) where
 
-import Prelude
 import System.FilePath.Posix (joinPath)
 import Test.Tasty
 import Test.Tasty.HUnit (assertBool, testCase, (@?=))

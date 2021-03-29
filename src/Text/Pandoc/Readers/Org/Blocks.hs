@@ -1,9 +1,10 @@
 {-# LANGUAGE FlexibleContexts  #-}
-{-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
 {- |
    Module      : Text.Pandoc.Readers.Org.Blocks
-   Copyright   : Copyright (C) 2014-2020 Albert Krewinkel
+   Copyright   : Copyright (C) 2014-2021 Albert Krewinkel
    License     : GNU GPL, version 2 or above
 
    Maintainer  : Albert Krewinkel <tarleb+pandoc@moltkeplatz.de>
@@ -38,6 +39,7 @@ import Data.Functor (($>))
 import Data.List (foldl', intersperse)
 import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Text (Text)
+import Data.List.NonEmpty (nonEmpty)
 
 import qualified Data.Text as T
 import qualified Text.Pandoc.Builder as B
@@ -294,24 +296,22 @@ verseBlock blockType = try $ do
 codeBlock :: PandocMonad m => BlockAttributes -> Text -> OrgParser m (F Blocks)
 codeBlock blockAttrs blockType = do
   skipSpaces
-  (classes, kv)     <- codeHeaderArgs <|> (mempty <$ ignHeaders)
-  content           <- rawBlockContent blockType
-  resultsContent    <- option mempty babelResultsBlock
-  let id'            = fromMaybe mempty $ blockAttrName blockAttrs
-  let codeBlck       = B.codeBlockWith ( id', classes, kv ) content
-  let labelledBlck   = maybe (pure codeBlck)
-                             (labelDiv codeBlck)
-                             (blockAttrCaption blockAttrs)
+  (classes, kv)  <- codeHeaderArgs <|> (mempty <$ ignHeaders)
+  content        <- rawBlockContent blockType
+  resultsContent <- option mempty babelResultsBlock
+  let identifier = fromMaybe mempty $ blockAttrName blockAttrs
+  let codeBlk    = B.codeBlockWith (identifier, classes, kv) content
+  let wrap       = maybe pure addCaption (blockAttrCaption blockAttrs)
   return $
-    (if exportsCode kv    then labelledBlck   else mempty) <>
+    (if exportsCode kv    then wrap codeBlk   else mempty) <>
     (if exportsResults kv then resultsContent else mempty)
  where
-   labelDiv :: Blocks -> F Inlines -> F Blocks
-   labelDiv blk value =
-     B.divWith nullAttr <$> (mappend <$> labelledBlock value <*> pure blk)
+   addCaption :: F Inlines -> Blocks -> F Blocks
+   addCaption caption blk = B.divWith ("", ["captioned-content"], [])
+                         <$> (mkCaptionBlock caption <> pure blk)
 
-   labelledBlock :: F Inlines -> F Blocks
-   labelledBlock = fmap (B.plain . B.spanWith ("", ["label"], []))
+   mkCaptionBlock :: F Inlines -> F Blocks
+   mkCaptionBlock = fmap (B.divWith ("", ["caption"], []) . B.plain)
 
    exportsResults :: [(Text, Text)] -> Bool
    exportsResults = maybe False (`elem` ["results", "both"]) . lookup "exports"
@@ -543,8 +543,7 @@ include = try $ do
     in case (minlvl >>= safeRead :: Maybe Int) of
          Nothing -> blks
          Just lvl -> let levels = Walk.query headerLevel blks
-                         -- CAVE: partial function in else
-                         curMin = if null levels then 0 else minimum levels
+                         curMin = maybe 0 minimum $ nonEmpty levels
                      in Walk.walk (shiftHeader (curMin - lvl)) blks
 
   headerLevel :: Block -> [Int]
@@ -852,16 +851,52 @@ definitionListItem parseIndentedMarker = try $ do
    definitionMarker =
      spaceChar *> string "::" <* (spaceChar <|> lookAhead newline)
 
+-- | Checkbox for tasks.
+data Checkbox
+  = UncheckedBox
+  | CheckedBox
+  | SemicheckedBox
+
+-- | Parses a checkbox in a plain list.
+checkbox :: PandocMonad m
+         => OrgParser m Checkbox
+checkbox = do
+  guardEnabled Ext_task_lists
+  try (char '[' *> status <* char ']') <?> "checkbox"
+  where
+    status = choice
+      [ UncheckedBox   <$ char ' '
+      , CheckedBox     <$ char 'X'
+      , SemicheckedBox <$ char '-'
+      ]
+
+checkboxToInlines :: Checkbox -> Inline
+checkboxToInlines = B.Str . \case
+  UncheckedBox   -> "☐"
+  SemicheckedBox -> "☐"
+  CheckedBox     -> "☒"
+
 -- | parse raw text for one list item
 listItem :: PandocMonad m
          => OrgParser m Int
          -> OrgParser m (F Blocks)
 listItem parseIndentedMarker = try . withContext ListItemState $ do
   markerLength <- try parseIndentedMarker
+  box <- optionMaybe checkbox
   firstLine <- anyLineNewline
   blank <- option "" ("\n" <$ blankline)
   rest <- T.concat <$> many (listContinuation markerLength)
-  parseFromString blocks $ firstLine <> blank <> rest
+  contents <- parseFromString blocks $ firstLine <> blank <> rest
+  return (maybe id (prependInlines . checkboxToInlines) box <$> contents)
+
+-- | Prepend inlines to blocks, adding them to the first paragraph or
+-- creating a new Plain element if necessary.
+prependInlines :: Inline -> Blocks -> Blocks
+prependInlines inlns = B.fromList . prepend . B.toList
+  where
+    prepend (Plain is : bs) = Plain (inlns : Space : is) : bs
+    prepend (Para  is : bs) = Para  (inlns : Space : is) : bs
+    prepend bs              = Plain [inlns, Space] : bs
 
 -- continuation of a list item - indented and separated by blankline or endline.
 -- Note: nested lists are parsed as continuations.

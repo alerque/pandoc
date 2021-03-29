@@ -3,7 +3,7 @@
 {- |
    Module      : Text.Pandoc.Readers.Textile
    Copyright   : Copyright (C) 2010-2012 Paul Rivier
-                               2010-2020 John MacFarlane
+                               2010-2021 John MacFarlane
    License     : GNU GPL, version 2 or above
 
    Maintainer  : Paul Rivier <paul*rivier#demotera*com>
@@ -11,7 +11,7 @@
    Portability : portable
 
 Conversion from Textile to 'Pandoc' document, based on the spec
-available at http://redcloth.org/textile.
+available at https://www.promptworks.com/textile/.
 
 Implemented and parsed:
  - Paragraphs
@@ -38,7 +38,8 @@ module Text.Pandoc.Readers.Textile ( readTextile) where
 import Control.Monad (guard, liftM)
 import Control.Monad.Except (throwError)
 import Data.Char (digitToInt, isUpper)
-import Data.List (intersperse, transpose)
+import Data.List (intersperse, transpose, foldl')
+import Data.List.NonEmpty (NonEmpty(..), nonEmpty)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Text.HTML.TagSoup (Tag (..), fromAttrib)
@@ -375,8 +376,9 @@ table = try $ do
                              (toprow:rest) | any (fst . fst) toprow ->
                                 (toprow, rest)
                              _ -> (mempty, rawrows)
-  let nbOfCols = maximum $ map length (headers:rows)
-  let aligns = map minimum $ transpose $ map (map (snd . fst)) (headers:rows)
+  let nbOfCols = maximum $ fmap length (headers :| rows)
+  let aligns = map (maybe AlignDefault minimum . nonEmpty) $
+                transpose $ map (map (snd . fst)) (headers:rows)
   let toRow = Row nullAttr . map B.simpleCell
       toHeaderRow l = [toRow l | not (null l)]
   return $ B.table (B.simpleCaption $ B.plain caption)
@@ -627,7 +629,7 @@ code2 = do
 
 -- | Html / CSS attributes
 attributes :: PandocMonad m => ParserT Text ParserState m Attr
-attributes = foldl (flip ($)) ("",[],[]) <$>
+attributes = foldl' (flip ($)) ("",[],[]) <$>
   try (do special <- option id specialAttribute
           attrs <- many attribute
           return (special : attrs))

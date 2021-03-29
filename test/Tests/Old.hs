@@ -1,7 +1,6 @@
-{-# LANGUAGE NoImplicitPrelude #-}
 {- |
    Module      : Tests.Old
-   Copyright   : © 2006-2020 John MacFarlane
+   Copyright   : © 2006-2021 John MacFarlane
    License     : GNU GPL, version 2 or above
 
    Maintainer  : John MacFarlane <jgm@berkeley@edu>
@@ -12,18 +11,16 @@
 -}
 module Tests.Old (tests) where
 
-import Prelude
 import Data.Algorithm.Diff
-import Data.List (intercalate)
-import Data.Maybe (catMaybes)
 import System.Exit
-import System.FilePath (joinPath, splitDirectories, (<.>), (</>))
-import qualified System.Environment as Env
+import System.FilePath ((<.>), (</>))
+import System.Environment (getExecutablePath)
 import Text.Pandoc.Process (pipeProcess)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Golden.Advanced (goldenTest)
 import Tests.Helpers hiding (test)
 import qualified Text.Pandoc.UTF8 as UTF8
+import qualified Data.Text as T
 
 tests :: FilePath -> [TestTree]
 tests pandocPath =
@@ -58,7 +55,7 @@ tests pandocPath =
     ]
   , testGroup "latex"
     [ testGroup "writer"
-        (writerTests' "latex" ++ lhsWriterTests' "latex")
+        (extWriterTests' "latex" ++ lhsWriterTests' "latex")
     , testGroup "reader"
       [ test' "basic" ["-r", "latex+raw_tex", "-w", "native", "-s"]
         "latex-reader.latex" "latex-reader.native"
@@ -101,7 +98,7 @@ tests pandocPath =
   , testGroup "jats"
     [ testGroup "writer"
       [ testGroup "jats_archiving" $
-        writerTests' "jats_archiving"
+        extWriterTests' "jats_archiving"
       , testGroup "jats_articleauthoring" $
         writerTests' "jats_articleauthoring"
       , testGroup "jats_publishing" $
@@ -233,7 +230,7 @@ tests pandocPath =
 -- makes sure file is fully closed after reading
 readFile' :: FilePath -> IO String
 readFile' f = do s <- UTF8.readFile f
-                 return $! (length s `seq` s)
+                 return $! (T.length s `seq` T.unpack s)
 
 lhsWriterTests :: FilePath -> String -> [TestTree]
 lhsWriterTests pandocPath format
@@ -320,27 +317,21 @@ testWithNormalize normalizer pandocPath testname opts inp norm =
     (compareValues norm options) updateGolden
   where getExpected = normalizer <$> readFile' norm
         getActual   = do
-              mldpath   <- Env.lookupEnv "LD_LIBRARY_PATH"
-              mdyldpath <- Env.lookupEnv "DYLD_LIBRARY_PATH"
-              let mbDynlibDir = findDynlibDir (reverse $
-                                 splitDirectories pandocPath)
-              let dynlibEnv = [("DYLD_LIBRARY_PATH", intercalate ":" $ catMaybes [mbDynlibDir, mdyldpath])
-                              ,("LD_LIBRARY_PATH",   intercalate ":" $ catMaybes [mbDynlibDir, mldpath])]
-              let env = dynlibEnv ++
-                        [("TMP","."),("LANG","en_US.UTF-8"),("HOME", "./")]
-              (ec, out) <- pipeProcess (Just env) pandocPath options mempty
+              env <- setupEnvironment pandocPath
+              (ec, out) <- pipeProcess (Just env) pandocPath
+                             ("--emulate":options) mempty
               if ec == ExitSuccess
                  then return $ filter (/='\r') . normalizer
                              $ UTF8.toStringLazy out
                    -- filter \r so the tests will work on Windows machines
                  else fail $ "Pandoc failed with error code " ++ show ec
-        updateGolden = UTF8.writeFile norm
-        options = ["--data-dir=../data","--quiet"] ++ [inp] ++ opts
+        updateGolden = UTF8.writeFile norm . T.pack
+        options = ["--quiet"] ++ [inp] ++ opts
 
 compareValues :: FilePath -> [String] -> String -> String -> IO (Maybe String)
 compareValues norm options expected actual = do
-  pandocPath <- findPandoc
-  let cmd  = pandocPath ++ " " ++ unwords options
+  testExePath <- getExecutablePath
+  let cmd  = testExePath ++ " --emulate " ++ unwords options
   let dash = replicate 72 '-'
   let diff = getDiff (lines actual) (lines expected)
   if expected == actual
@@ -350,8 +341,3 @@ compareValues norm options expected actual = do
         "\n--- " ++ norm ++
         "\n+++ " ++ cmd ++ "\n" ++
         showDiff (1,1) diff ++ dash
-
-findDynlibDir :: [FilePath] -> Maybe FilePath
-findDynlibDir []           = Nothing
-findDynlibDir ("build":xs) = Just $ joinPath (reverse xs) </> "build"
-findDynlibDir (_:xs)       = findDynlibDir xs

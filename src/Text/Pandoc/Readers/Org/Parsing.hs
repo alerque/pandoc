@@ -1,6 +1,6 @@
 {- |
    Module      : Text.Pandoc.Readers.Org.Parsing
-   Copyright   : Copyright (C) 2014-2020 Albert Krewinkel
+   Copyright   : Copyright (C) 2014-2021 Albert Krewinkel
    License     : GNU GPL, version 2 or above
 
    Maintainer  : Albert Krewinkel <tarleb+pandoc@moltkeplatz.de>
@@ -106,8 +106,8 @@ module Text.Pandoc.Readers.Org.Parsing
 import Data.Text (Text)
 import Text.Pandoc.Readers.Org.ParserState
 
-import Text.Pandoc.Parsing hiding (F, anyLine, blanklines, newline,
-                            parseFromString)
+import Text.Pandoc.Parsing hiding (anyLine, blanklines, newline,
+                                   parseFromString)
 import qualified Text.Pandoc.Parsing as P
 
 import Control.Monad (guard)

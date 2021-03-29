@@ -69,7 +69,7 @@ $body$
 
   <script src="$revealjs-url$/dist/reveal.js"></script>
 
-  // reveal.js plugins
+  <!-- reveal.js plugins -->
   <script src="$revealjs-url$/plugin/notes/notes.js"></script>
   <script src="$revealjs-url$/plugin/search/search.js"></script>
   <script src="$revealjs-url$/plugin/zoom/zoom.js"></script>
@@ -82,6 +82,10 @@ $endif$
       // Full list of configuration options available at:
       // https://revealjs.com/config/
       Reveal.initialize({
+$if(center)$
+        // Determines whether slide content should be vertically centered
+        center: $center$,
+$endif$      
 $if(controls)$
         // Display controls in the bottom right corner
         controls: $controls$,

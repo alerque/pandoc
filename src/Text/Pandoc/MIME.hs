@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {- |
    Module      : Text.Pandoc.MIME
-   Copyright   : Copyright (C) 2011-2020 John MacFarlane
+   Copyright   : Copyright (C) 2011-2021 John MacFarlane
    License     : GNU GPL, version 2 or above
 
    Maintainer  : John MacFarlane <jgm@berkeley.edu>
@@ -10,8 +10,13 @@
 
 Mime type lookup.
 -}
-module Text.Pandoc.MIME ( MimeType, getMimeType, getMimeTypeDef,
-                          extensionFromMimeType, mediaCategory ) where
+module Text.Pandoc.MIME (
+  MimeType,
+  getMimeType,
+  getMimeTypeDef,
+  getCharset,
+  extensionFromMimeType,
+  mediaCategory ) where
 import Data.List (isPrefixOf, isSuffixOf)
 import qualified Data.Map as M
 import qualified Data.Text as T
@@ -53,6 +58,14 @@ reverseMimeTypes = M.fromList $ map swap mimeTypesList
 
 mimeTypes :: M.Map T.Text MimeType
 mimeTypes = M.fromList mimeTypesList
+
+-- | Get the charset from a mime type, if one is present.
+getCharset :: MimeType -> Maybe T.Text
+getCharset mt =
+  let (_,y) = T.breakOn "charset=" mt
+   in if T.null y
+         then Nothing
+         else Just $ T.toUpper $ T.takeWhile (/= ';') $ T.drop 8 y
 
 -- | Collection of common mime types.
 -- Except for first entry, list borrowed from

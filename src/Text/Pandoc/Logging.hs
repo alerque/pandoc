@@ -4,7 +4,7 @@
 {-# LANGUAGE OverloadedStrings  #-}
 {- |
    Module      : Text.Pandoc.Logging
-   Copyright   : Copyright (C) 2006-2020 John MacFarlane
+   Copyright   : Copyright (C) 2006-2021 John MacFarlane
    License     : GNU GPL, version 2 or above
 
    Maintainer  : John MacFarlane <jgm@berkeley.edu>
@@ -36,6 +36,7 @@ import Data.Typeable (Typeable)
 import GHC.Generics (Generic)
 import Text.Pandoc.Definition
 import Text.Parsec.Pos
+import Text.Pandoc.Shared (tshow)
 
 -- | Verbosity level.
 data Verbosity = ERROR | WARNING | INFO
@@ -100,6 +101,8 @@ data LogMessage =
   | FilterCompleted FilePath Integer
   | CiteprocWarning Text
   | ATXHeadingInLHS Int Text
+  | EnvironmentVariableUndefined Text
+  | DuplicateAttribute Text Text
   deriving (Show, Eq, Data, Ord, Typeable, Generic)
 
 instance ToJSON LogMessage where
@@ -229,6 +232,11 @@ instance ToJSON LogMessage where
       ATXHeadingInLHS lvl contents ->
            ["level" .= lvl
            ,"contents" .= contents]
+      EnvironmentVariableUndefined var ->
+           ["variable" .= var ]
+      DuplicateAttribute attr val ->
+           ["attribute" .= attr
+           ,"value" .= val]
 
 showPos :: SourcePos -> Text
 showPos pos = Text.pack $ sn ++ "line " ++
@@ -345,6 +353,10 @@ showLogMessage msg =
          if lvl < 3
             then " Consider using --markdown-headings=setext."
             else ""
+       EnvironmentVariableUndefined var ->
+         "Undefined environment variable " <> var <> " in defaults file."
+       DuplicateAttribute attr val ->
+         "Ignoring duplicate attribute " <> attr <> "=" <> tshow val <> "."
 
 messageVerbosity :: LogMessage -> Verbosity
 messageVerbosity msg =
@@ -391,3 +403,5 @@ messageVerbosity msg =
        FilterCompleted{}             -> INFO
        CiteprocWarning{}             -> WARNING
        ATXHeadingInLHS{}             -> WARNING
+       EnvironmentVariableUndefined{}-> WARNING
+       DuplicateAttribute{}          -> WARNING

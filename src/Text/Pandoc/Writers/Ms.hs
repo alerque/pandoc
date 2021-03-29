@@ -2,7 +2,7 @@
 {-# LANGUAGE ViewPatterns      #-}
 {- |
    Module      : Text.Pandoc.Writers.Ms
-   Copyright   : Copyright (C) 2007-2020 John MacFarlane
+   Copyright   : Copyright (C) 2007-2021 John MacFarlane
    License     : GNU GPL, version 2 or above
 
    Maintainer  : John MacFarlane <jgm@berkeley.edu>
@@ -23,6 +23,7 @@ module Text.Pandoc.Writers.Ms ( writeMs ) where
 import Control.Monad.State.Strict
 import Data.Char (isLower, isUpper, ord)
 import Data.List (intercalate, intersperse)
+import Data.List.NonEmpty (nonEmpty)
 import qualified Data.Map as Map
 import Data.Maybe (catMaybes)
 import Data.Text (Text)
@@ -263,8 +264,10 @@ blockToMs opts (Table _ blkCapt specs thead tbody tfoot) =
                          return $ makeRow cols) rows
   setFirstPara
   return $ literal ".PP" $$ caption' $$
+           literal ".na" $$ -- we don't want justification in table cells
            literal ".TS" $$ literal "delim(@@) tab(\t);" $$ coldescriptions $$
-           colheadings' $$ vcat body $$ literal ".TE"
+           colheadings' $$ vcat body $$ literal ".TE" $$
+           literal ".ad"
 
 blockToMs opts (BulletList items) = do
   contents <- mapM (bulletListItemToMs opts) items
@@ -272,8 +275,7 @@ blockToMs opts (BulletList items) = do
   return (vcat contents)
 blockToMs opts (OrderedList attribs items) = do
   let markers = take (length items) $ orderedListMarkers attribs
-  let indent = 2 +
-                     maximum (map T.length markers)
+  let indent = 2 + maybe 0 maximum (nonEmpty (map T.length markers))
   contents <- mapM (\(num, item) -> orderedListItemToMs opts num indent item) $
               zip markers items
   setFirstPara

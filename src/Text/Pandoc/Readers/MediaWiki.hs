@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {- |
    Module      : Text.Pandoc.Readers.MediaWiki
-   Copyright   : Copyright (C) 2012-2020 John MacFarlane
+   Copyright   : Copyright (C) 2012-2021 John MacFarlane
    License     : GNU GPL, version 2 or above
 
    Maintainer  : John MacFarlane <jgm@berkeley.edu>
@@ -112,12 +112,14 @@ newBlockTags = ["haskell","syntaxhighlight","source","gallery","references"]
 isBlockTag' :: Tag Text -> Bool
 isBlockTag' tag@(TagOpen t _) = (isBlockTag tag || t `elem` newBlockTags) &&
   t `notElem` eitherBlockOrInline
+isBlockTag' (TagClose "ref") = True -- needed so 'special' doesn't parse it
 isBlockTag' tag@(TagClose t) = (isBlockTag tag || t `elem` newBlockTags) &&
   t `notElem` eitherBlockOrInline
 isBlockTag' tag = isBlockTag tag
 
 isInlineTag' :: Tag Text -> Bool
 isInlineTag' (TagComment _) = True
+isInlineTag' (TagClose "ref") = False -- see below inlineTag
 isInlineTag' t              = not (isBlockTag' t)
 
 eitherBlockOrInline :: [Text]
@@ -554,11 +556,17 @@ variable = try $ do
   contents <- manyTillChar anyChar (try $ string "}}}")
   return $ "{{{" <> contents <> "}}}"
 
+singleParaToPlain :: Blocks -> Blocks
+singleParaToPlain bs =
+  case B.toList bs of
+    [Para ils] -> B.fromList [Plain ils]
+    _ -> bs
+
 inlineTag :: PandocMonad m => MWParser m Inlines
 inlineTag = do
   (tag, _) <- lookAhead $ htmlTag isInlineTag'
   case tag of
-       TagOpen "ref" _ -> B.note . B.plain <$> inlinesInTags "ref"
+       TagOpen "ref" _ -> B.note . singleParaToPlain <$> blocksInTags "ref"
        TagOpen "nowiki" _ -> try $ do
           (_,raw) <- htmlTag (~== tag)
           if T.any (== '/') raw
@@ -678,19 +686,17 @@ url = do
 -- | Parses a list of inlines between start and end delimiters.
 inlinesBetween :: (PandocMonad m, Show b) => MWParser m a -> MWParser m b -> MWParser m Inlines
 inlinesBetween start end =
-  trimInlines . mconcat <$> try (start >> many1Till inner end)
-    where inner      = innerSpace <|> (notFollowedBy' (() <$ whitespace) >> inline)
-          innerSpace = try $ whitespace <* notFollowedBy' end
+  trimInlines . mconcat <$> try (start >> many1Till inline end)
 
 emph :: PandocMonad m => MWParser m Inlines
 emph = B.emph <$> nested (inlinesBetween start end)
-    where start = sym "''" >> lookAhead nonspaceChar
+    where start = sym "''"
           end   = try $ notFollowedBy' (() <$ strong) >> sym "''"
 
 strong :: PandocMonad m => MWParser m Inlines
 strong = B.strong <$> nested (inlinesBetween start end)
-    where start = sym "'''" >> lookAhead nonspaceChar
-          end   = try $ sym "'''"
+    where start = sym "'''"
+          end   = sym "'''"
 
 doubleQuotes :: PandocMonad m => MWParser m Inlines
 doubleQuotes = do

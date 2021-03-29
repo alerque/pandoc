@@ -1,8 +1,7 @@
-{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedStrings #-}
 {- |
    Module      : Tests.Readers.Markdown
-   Copyright   : © 2006-2020 John MacFarlane
+   Copyright   : © 2006-2021 John MacFarlane
    License     : GNU GPL, version 2 or above
 
    Maintainer  : John MacFarlane <jgm@berkeley.edu>
@@ -13,7 +12,6 @@ Tests for the Markdown reader.
 -}
 module Tests.Readers.Markdown (tests) where
 
-import Prelude
 import Data.Text (Text, unpack)
 import qualified Data.Text as T
 import Test.Tasty

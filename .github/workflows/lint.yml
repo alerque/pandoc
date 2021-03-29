@@ -25,6 +25,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
 
+      - name: Check cabal file for missing test files
+        run: make check-cabal
+
       - name: Download and run hlint
         run: |
           curl -sSL "${hlint_script}" | sh -s .

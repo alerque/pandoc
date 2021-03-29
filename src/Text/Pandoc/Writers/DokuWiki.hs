@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {- |
    Module      : Text.Pandoc.Writers.DokuWiki
-   Copyright   : Copyright (C) 2008-2020 John MacFarlane
+   Copyright   : Copyright (C) 2008-2021 John MacFarlane
    License     : GNU GPL, version 2 or above
 
    Maintainer  : Clare Macrae <clare.macrae@googlemail.com>
@@ -27,6 +27,7 @@ import Control.Monad.Reader (ReaderT, asks, local, runReaderT)
 import Control.Monad.State.Strict (StateT, evalStateT)
 import Data.Default (Default (..))
 import Data.List (transpose)
+import Data.List.NonEmpty (nonEmpty)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Text.Pandoc.Class.PandocMonad (PandocMonad, report)
@@ -172,7 +173,8 @@ blockToDokuWiki opts (Table _ blkCapt specs thead tbody tfoot) = do
                  then return []
                  else zipWithM (tableItemToDokuWiki opts) aligns headers
   rows' <- mapM (zipWithM (tableItemToDokuWiki opts) aligns) rows
-  let widths = map (maximum . map T.length) $ transpose (headers':rows')
+  let widths = map (maybe 0 maximum . nonEmpty . map T.length)
+                   $ transpose (headers':rows')
   let padTo (width, al) s =
           case width - T.length s of
                x | x > 0 ->

@@ -2,29 +2,22 @@ flags:
   pandoc:
     trypandoc: false
     embed_data_files: true
+  QuickCheck:
+    old-random: false
 packages:
 - '.'
 extra-deps:
-- pandoc-types-1.22
-- texmath-0.12.0.3
-- rfc5051-0.2
-- haddock-library-1.9.0
-- skylighting-0.10.0.3
-- skylighting-core-0.10.0.3
-- doclayout-0.3
-- emojis-0.1
-- hslua-1.1.2
-- jira-wiki-markup-1.3.2
-- HsYAML-0.2.1.0
-- HsYAML-aeson-0.2.0.0
-- doctemplates-0.8.2
-- commonmark-0.1.1.2
-- commonmark-extensions-0.2.0.4
-- commonmark-pandoc-0.2.0.1
-- citeproc-0.2
+- hslua-1.3.0
+- hslua-module-path-0.1.0
+- jira-wiki-markup-1.3.4
+- skylighting-core-0.10.5
+- skylighting-0.10.5
+- doclayout-0.3.0.2
+- citeproc-0.3.0.9
+- texmath-0.12.2
+- random-1.2.0
 ghc-options:
    "$locals": -fhide-source-paths -Wno-missing-home-modules
-resolver: lts-14.6
+resolver: lts-17.5
 nix:
   packages: [zlib]
-

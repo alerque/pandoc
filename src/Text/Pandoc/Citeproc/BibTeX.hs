@@ -1,4 +1,5 @@
 {-# LANGUAGE ViewPatterns      #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -17,6 +18,7 @@
 module Text.Pandoc.Citeproc.BibTeX
     ( Variant(..)
     , readBibtexString
+    , writeBibtexString
     )
     where
 
@@ -24,10 +26,11 @@ import Text.Pandoc.Definition
 import Text.Pandoc.Builder as B
 import Text.Pandoc.Readers.LaTeX (readLaTeX)
 import Text.Pandoc.Extensions (Extension(..), extensionsFromList)
-import Text.Pandoc.Options (ReaderOptions(..))
-import Text.Pandoc.Class (runPure)
+import Text.Pandoc.Options (ReaderOptions(..), WriterOptions)
 import Text.Pandoc.Error (PandocError)
 import Text.Pandoc.Shared (stringify)
+import Text.Pandoc.Writers.LaTeX (writeLaTeX)
+import Text.Pandoc.Class (runPure)
 import qualified Text.Pandoc.Walk       as Walk
 import Citeproc.Types
 import Citeproc.Pandoc ()
@@ -46,8 +49,11 @@ import qualified Data.Sequence          as Seq
 import           Data.Char              (isAlphaNum, isDigit, isLetter,
                                          isUpper, toLower, toUpper,
                                          isLower, isPunctuation)
-import           Data.List              (foldl', intercalate)
+import           Data.List              (foldl', intercalate, intersperse)
 import           Safe                   (readMay)
+import           Text.Printf            (printf)
+import           Text.DocLayout         (literal, hsep, nest, hang, Doc(..),
+                                         braces, ($$), cr)
 
 data Variant = Bibtex | Biblatex
   deriving (Show, Eq, Ord)
@@ -67,6 +73,262 @@ readBibtexString variant locale idpred contents = do
            "" contents of
           Left err -> Left err
           Right xs -> return xs
+
+-- | Write BibTeX or BibLaTeX given given a 'Reference'.
+writeBibtexString :: WriterOptions       -- ^ options (for writing LaTex)
+                  -> Variant             -- ^ bibtex or biblatex
+                  -> Maybe Lang          -- ^ Language
+                  -> Reference Inlines   -- ^ Reference to write
+                  -> Doc Text
+writeBibtexString opts variant mblang ref =
+  "@" <> bibtexType <> "{" <> literal (unItemId (referenceId ref)) <> ","
+  $$ nest 2 (renderFields fs)
+  $$ "}" <> cr
+
+ where
+  bibtexType =
+    case referenceType ref of
+      "article-magazine"  -> "article"
+      "article-newspaper" -> "article"
+      "article-journal"   -> "article"
+      "book"              -> "book"
+      "pamphlet"          -> "booklet"
+      "dataset" | variant == Biblatex -> "dataset"
+      "webpage" | variant == Biblatex -> "online"
+      "chapter"           -> case getVariable "editor" of
+                                Just _  -> "incollection"
+                                Nothing -> "inbook"
+      "entry-encyclopedia" | variant == Biblatex -> "inreference"
+                           | otherwise -> "inbook"
+      "paper-conference"  -> "inproceedings"
+      "thesis" -> case getVariableAsText "genre" of
+                    Just "mathesis" -> "mastersthesis"
+                    _               -> "phdthesis"
+      "patent"            | variant == Biblatex -> "patent"
+      "report"            | variant == Biblatex -> "report"
+                          | otherwise -> "techreport"
+      "speech"            -> "unpublished"
+      "manuscript"        -> "unpublished"
+      "graphic"           | variant == Biblatex -> "artwork"
+      "song"              | variant == Biblatex -> "music"
+      "legal_case"        | variant == Biblatex -> "jurisdictionN"
+      "legislation"       | variant == Biblatex -> "legislation"
+      "treaty"            | variant == Biblatex -> "legal"
+      "personal_communication" | variant == Biblatex -> "letter"
+      "motion_picture"    | variant == Biblatex -> "movie"
+      "review"             | variant == Biblatex -> "review"
+      _                   -> "misc"
+
+  mbSubtype =
+    case referenceType ref of
+      "article-magazine"  -> Just "magazine"
+      "article-newspaper" -> Just "newspaper"
+      _ -> Nothing
+
+  fs =
+    case variant of
+      Biblatex ->
+           [ "author"
+           , "editor"
+           , "translator"
+           , "publisher"
+           , "title"
+           , "booktitle"
+           , "journal"
+           , "series"
+           , "edition"
+           , "volume"
+           , "volumes"
+           , "number"
+           , "pages"
+           , "date"
+           , "eventdate"
+           , "urldate"
+           , "address"
+           , "url"
+           , "doi"
+           , "isbn"
+           , "issn"
+           , "type"
+           , "entrysubtype"
+           , "note"
+           , "langid"
+           , "abstract"
+           , "keywords"
+           ]
+      Bibtex ->
+           [ "author"
+           , "editor"
+           , "translator"
+           , "publisher"
+           , "title"
+           , "booktitle"
+           , "journal"
+           , "series"
+           , "edition"
+           , "volume"
+           , "number"
+           , "pages"
+           , "year"
+           , "month"
+           , "address"
+           , "type"
+           , "note"
+           ]
+
+  valToInlines (TextVal t) = B.text t
+  valToInlines (FancyVal ils) = ils
+  valToInlines (NumVal n) = B.text (T.pack $ show n)
+  valToInlines (NamesVal names) =
+    mconcat $ intersperse (B.space <> B.text "and" <> B.space)
+            $ map renderName names
+  valToInlines (DateVal date) = B.text $
+    case dateLiteral date of
+      Just t  -> t
+      Nothing -> T.intercalate "/" (map renderDatePart (dateParts date)) <>
+                    (if dateCirca date then "~" else mempty)
+
+  renderDatePart (DateParts xs) = T.intercalate "-" $
+                                    map (T.pack . printf "%02d") xs
+
+  renderName name =
+    case nameLiteral name of
+      Just t  -> B.text t
+      Nothing -> spacedMaybes
+                  [ nameNonDroppingParticle name
+                  , nameFamily name
+                  , if nameCommaSuffix name
+                        then (", " <>) <$> nameSuffix name
+                        else nameSuffix name ]
+                  <>
+                  spacedMaybes
+                   [ (", " <>) <$> nameGiven name,
+                     nameDroppingParticle name ]
+
+  mblang' = (parseLang <$> getVariableAsText "language") <|> mblang
+
+  titlecase = case mblang' of
+                Just (Lang "en" _) -> titlecase'
+                Nothing            -> titlecase'
+                _                  ->
+                  case variant of
+                    Bibtex         -> B.spanWith nullAttr
+                     -- BibTex lacks a language field, so we wrap non-English
+                     -- titles in {} to protect case.
+                    Biblatex       -> id
+
+  titlecase' = addTextCase mblang' TitleCase .
+    (\ils -> B.fromList
+               (case B.toList ils of
+                  Str t : xs -> Str t : Walk.walk spanAroundCapitalizedWords xs
+                  xs         -> Walk.walk spanAroundCapitalizedWords xs))
+
+  -- protect capitalized words when we titlecase
+  spanAroundCapitalizedWords (Str t)
+    | not (T.all (\c -> isLower c || not (isLetter c)) t) =
+       Span ("",["nocase"],[]) [Str t]
+  spanAroundCapitalizedWords x = x
+
+  spacedMaybes = mconcat . intersperse B.space . mapMaybe (fmap B.text)
+
+  toLaTeX x =
+    case runPure (writeLaTeX opts $ doc (B.plain x)) of
+           Left _  -> Nothing
+           Right t -> Just $ hsep . map literal $ T.words t
+
+  renderField :: Text -> Maybe (Doc Text)
+  renderField name =
+    (((literal name) <>) . hang 2 " = " . braces)
+      <$> getContentsFor name
+
+  getVariable v = lookupVariable (toVariable v) ref
+
+  getVariableAsText v = (stringify . valToInlines) <$> getVariable v
+
+  getYear val =
+    case val of
+       DateVal date ->
+         case dateLiteral date of
+           Just t -> toLaTeX (B.text t)
+           Nothing ->
+             case dateParts date of
+               [DateParts (y1:_), DateParts (y2:_)] ->
+                 Just $ literal (T.pack (printf "%04d" y1) <> "--" <>
+                        T.pack (printf "%04d" y2))
+               [DateParts (y1:_)] ->
+                 Just $ literal (T.pack (printf "%04d" y1))
+               _ -> Nothing
+       _ -> Nothing
+
+  toMonth 1 = "jan"
+  toMonth 2 = "feb"
+  toMonth 3 = "mar"
+  toMonth 4 = "apr"
+  toMonth 5 = "may"
+  toMonth 6 = "jun"
+  toMonth 7 = "jul"
+  toMonth 8 = "aug"
+  toMonth 9 = "sep"
+  toMonth 10 = "oct"
+  toMonth 11 = "nov"
+  toMonth 12 = "dec"
+  toMonth x  = T.pack $ show x
+
+  getMonth val =
+    case val of
+       DateVal date ->
+         case dateParts date of
+           [DateParts (_:m1:_), DateParts (_:m2:_)] ->
+             Just $ literal (toMonth m1 <> "--" <> toMonth m2)
+           [DateParts (_:m1:_)] -> Just $ literal (toMonth m1)
+           _ -> Nothing
+       _ -> Nothing
+
+  getContentsFor :: Text -> Maybe (Doc Text)
+  getContentsFor "type" =
+    getVariableAsText "genre" >>=
+       \case
+          "mathesis"  -> Just "mastersthesis"
+          "phdthesis" -> Just "phdthesis"
+          _           -> Nothing
+  getContentsFor "entrysubtype" = literal <$> mbSubtype
+  getContentsFor "journal"
+    | bibtexType `elem` ["article", "periodical", "suppperiodical", "review"]
+      = getVariable "container-title" >>= toLaTeX . valToInlines
+    | otherwise = Nothing
+  getContentsFor "booktitle"
+    | bibtexType `elem`
+       ["inbook","incollection","inproceedings","inreference","bookinbook"]
+    = (getVariable "volume-title" <|> getVariable "container-title")
+                               >>= toLaTeX . valToInlines
+    | otherwise = Nothing
+  getContentsFor "series" = getVariable "collection-title"
+                               >>= toLaTeX . valToInlines
+  getContentsFor "address" = getVariable "publisher-place"
+                               >>= toLaTeX . valToInlines
+  getContentsFor "date"  = getVariable "issued" >>= toLaTeX . valToInlines
+  getContentsFor "eventdate" = getVariable "event-date" >>= toLaTeX . valToInlines
+  getContentsFor "urldate"  = getVariable "accessed" >>= toLaTeX . valToInlines
+  getContentsFor "year"  = getVariable "issued" >>= getYear
+  getContentsFor "month"  = getVariable "issued" >>= getMonth
+  getContentsFor "pages"  = getVariable "page" >>= toLaTeX . valToInlines
+  getContentsFor "langid"  = getVariable "language" >>= toLaTeX . valToInlines
+  getContentsFor "number" = (getVariable "number"
+                         <|> getVariable "collection-number"
+                         <|> getVariable "issue") >>= toLaTeX . valToInlines
+
+  getContentsFor x = getVariable x >>=
+    if isURL x
+       then Just . literal . stringify . valToInlines
+       else toLaTeX .
+            (if x == "title"
+                then titlecase
+                else id) .
+            valToInlines
+
+  isURL x = x `elem` ["url","doi","issn","isbn"]
+
+  renderFields = mconcat . intersperse ("," <> cr) . mapMaybe renderField
 
 defaultLang :: Lang
 defaultLang = Lang "en" (Just "US")
@@ -315,10 +577,10 @@ itemToReference locale variant item = do
                  eprint <- getRawField "eprint"
                  let baseUrl =
                        case T.toLower etype of
-                         "arxiv"       -> "http://arxiv.org/abs/"
-                         "jstor"       -> "http://www.jstor.org/stable/"
-                         "pubmed"      -> "http://www.ncbi.nlm.nih.gov/pubmed/"
-                         "googlebooks" -> "http://books.google.com?id="
+                         "arxiv"       -> "https://arxiv.org/abs/"
+                         "jstor"       -> "https://www.jstor.org/stable/"
+                         "pubmed"      -> "https://www.ncbi.nlm.nih.gov/pubmed/"
+                         "googlebooks" -> "https://books.google.com?id="
                          _             -> ""
                  if T.null baseUrl
                     then mzero
@@ -502,40 +764,9 @@ blocksToInlines bs =
        _          -> B.fromList $ Walk.query (:[]) bs
 
 adjustSpans :: Lang -> Inline -> Inline
-adjustSpans lang (RawInline (Format "latex") s)
-  | s == "\\hyphen" || s == "\\hyphen " = Str "-"
-  | otherwise = parseRawLaTeX lang s
+adjustSpans lang (Span ("",[],[("bibstring",s)]) _) = Str $ resolveKey' lang s
 adjustSpans _ SoftBreak = Space
 adjustSpans _ x = x
-
-parseRawLaTeX :: Lang -> Text -> Inline
-parseRawLaTeX lang t@(T.stripPrefix "\\" -> Just xs) =
-  case parseLaTeX lang contents of
-          Right [Para ys]  -> f command ys
-          Right [Plain ys] -> f command ys
-          Right []         -> f command []
-          _                -> RawInline (Format "latex") t
-   where (command', contents') = T.break (\c -> c =='{' || c =='\\') xs
-         command  = T.strip command'
-         contents = T.drop 1 $ T.dropEnd 1 contents'
-         f "mkbibquote"    ils = Span nullAttr [Quoted DoubleQuote ils]
-         f "mkbibemph"     ils = Span nullAttr [Emph ils]
-         f "mkbibitalic"   ils = Span nullAttr [Emph ils]
-         f "mkbibbold"     ils = Span nullAttr [Strong ils]
-         f "mkbibparens"   ils = Span nullAttr $
-                                  [Str "("] ++ ils ++ [Str ")"]
-         f "mkbibbrackets" ils = Span nullAttr $
-                                  [Str "["] ++ ils ++ [Str "]"]
-         -- ... both should be nestable & should work in year fields
-         f "autocap"    ils    = Span nullAttr ils
-           -- TODO: should work in year fields
-         f "textnormal" ils    = Span ("",["nodecor"],[]) ils
-         f "bibstring" [Str s] = Str $ resolveKey' lang s
-         f "adddot"    []      = Str "."
-         f "adddotspace" []    = Span nullAttr [Str ".", Space]
-         f "addabbrvspace" []  = Space
-         f _            ils    = Span nullAttr ils
-parseRawLaTeX _ t = RawInline (Format "latex") t
 
 latex' :: Text -> Bib [Block]
 latex' t = do
@@ -601,7 +832,7 @@ inBraces :: BibParser Text
 inBraces = do
   char '{'
   res <- manyTill
-         (  (T.pack <$> many1 (noneOf "{}\\"))
+         (  take1WhileP (\c -> c /= '{' && c /= '}' && c /= '\\')
         <|> (char '\\' >> (  (char '{' >> return "\\{")
                          <|> (char '}' >> return "\\}")
                          <|> return "\\"))
@@ -616,7 +847,7 @@ inQuotes :: BibParser Text
 inQuotes = do
   char '"'
   T.concat <$> manyTill
-             (  (T.pack <$> many1 (noneOf "\"\\{"))
+             ( take1WhileP (\c -> c /= '{' && c /= '"' && c /= '\\')
                <|> (char '\\' >> T.cons '\\' . T.singleton <$> anyChar)
                <|> braced <$> inBraces
             ) (char '"')
@@ -812,22 +1043,21 @@ getOldDate prefix = do
   let dateparts = filter (\x -> x /= DateParts [])
                   $ map toDateParts [(year',month',day'),
                                      (endyear',endmonth',endday')]
-  literal <- if null dateparts
-                then Just <$> getRawField (prefix <> "year")
-                else return Nothing
+  literal' <- if null dateparts
+                 then Just <$> getRawField (prefix <> "year")
+                 else return Nothing
   return $
     Date { dateParts = dateparts
          , dateCirca = False
          , dateSeason = Nothing
-         , dateLiteral = literal }
+         , dateLiteral = literal' }
 
 getRawField :: Text -> Bib Text
-getRawField f =
-  (stringify <$> getField f)
-  <|> do fs <- asks fields
-         case Map.lookup f fs of
-              Just x  -> return x
-              Nothing -> notFound f
+getRawField f = do
+  fs <- asks fields
+  case Map.lookup f fs of
+       Just x  -> return x
+       Nothing -> notFound f
 
 getLiteralList :: Text -> Bib [Inlines]
 getLiteralList f = do

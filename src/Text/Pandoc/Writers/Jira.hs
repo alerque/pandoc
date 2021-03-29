@@ -3,7 +3,7 @@
 {-# LANGUAGE PatternGuards #-}
 {- |
    Module      : Text.Pandoc.Writers.Jira
-   Copyright   : © 2010-2020 Albert Krewinkel, John MacFarlane
+   Copyright   : © 2010-2021 Albert Krewinkel, John MacFarlane
    License     : GNU GPL, version 2 or above
 
    Maintainer  : Albert Krewinkel <tarleb+pandoc@moltkeplatz.de>
@@ -39,11 +39,17 @@ writeJira :: PandocMonad m => WriterOptions -> Pandoc -> m Text
 writeJira opts = runDefaultConverter (writerWrapText opts) (pandocToJira opts)
 
 -- | State to keep track of footnotes.
-newtype ConverterState = ConverterState { stNotes :: [Text] }
+data ConverterState = ConverterState
+  { stNotes   :: [Text] -- ^ Footnotes to be appended to the end of the text
+  , stInPanel :: Bool   -- ^ whether we are in a @{panel}@ block
+  }
 
 -- | Initial converter state.
 startState :: ConverterState
-startState = ConverterState { stNotes = [] }
+startState = ConverterState
+  { stNotes = []
+  , stInPanel = False
+  }
 
 -- | Converter monad
 type JiraConverter m = ReaderT WrapOption (StateT ConverterState m)
@@ -126,13 +132,19 @@ toJiraCode :: PandocMonad m
            -> Text
            -> JiraConverter m [Jira.Block]
 toJiraCode (ident, classes, _attribs) code = do
-  let lang = case find (\c -> T.toLower c `elem` knownLanguages) classes of
-               Nothing -> Jira.Language "java"
-               Just l  -> Jira.Language l
-  let addAnchor b = if T.null ident
-                    then b
-                    else [Jira.Para (singleton (Jira.Anchor ident))] <> b
-  return . addAnchor . singleton $ Jira.Code lang mempty code
+  return . addAnchor ident . singleton $
+    case find (\c -> T.toLower c `elem` knownLanguages) classes of
+      Nothing -> Jira.NoFormat mempty code
+      Just l  -> Jira.Code (Jira.Language l) mempty code
+
+-- | Prepends an anchor with the given identifier.
+addAnchor :: Text -> [Jira.Block] -> [Jira.Block]
+addAnchor ident =
+  if T.null ident
+  then id
+  else \case
+    Jira.Para xs : bs -> (Jira.Para (Jira.Anchor ident : xs) : bs)
+    bs                -> (Jira.Para (singleton (Jira.Anchor ident)) : bs)
 
 -- | Creates a Jira definition list
 toJiraDefinitionList :: PandocMonad m
@@ -149,11 +161,16 @@ toJiraDefinitionList defItems = do
 toJiraPanel :: PandocMonad m
             => Attr -> [Block]
             -> JiraConverter m [Jira.Block]
-toJiraPanel attr blocks = do
-  jiraBlocks <- toJiraBlocks blocks
-  return $ if attr == nullAttr
-           then jiraBlocks
-           else singleton (Jira.Panel [] jiraBlocks)
+toJiraPanel (ident, classes, attribs) blocks = do
+  inPanel <- gets stInPanel
+  if inPanel || ("panel" `notElem` classes && null attribs)
+    then addAnchor ident <$> toJiraBlocks blocks
+    else do
+      modify $ \st -> st{ stInPanel = True }
+      jiraBlocks <- toJiraBlocks blocks
+      modify $ \st -> st{ stInPanel = inPanel }
+      let params = map (uncurry Jira.Parameter) attribs
+      return $ singleton (Jira.Panel params $ addAnchor ident jiraBlocks)
 
 -- | Creates a Jira header
 toJiraHeader :: PandocMonad m
@@ -292,7 +309,9 @@ quotedToJira qtype xs = do
 spanToJira :: PandocMonad m
            => Attr -> [Inline]
            -> JiraConverter m [Jira.Inline]
-spanToJira (_, _classes, _) = toJiraInlines
+spanToJira (ident, _classes, _attribs) inls = case ident of
+  "" -> toJiraInlines inls
+  _  -> (Jira.Anchor ident :) <$> toJiraInlines inls
 
 registerNotes :: PandocMonad m => [Block] -> JiraConverter m [Jira.Inline]
 registerNotes contents = do
@@ -308,7 +327,7 @@ registerNotes contents = do
 knownLanguages :: [Text]
 knownLanguages =
   [ "actionscript", "ada", "applescript", "bash", "c", "c#", "c++"
-  , "css", "erlang", "go", "groovy", "haskell", "html", "javascript"
+  , "css", "erlang", "go", "groovy", "haskell", "html", "java", "javascript"
   , "json", "lua", "nyan", "objc", "perl", "php", "python", "r", "ruby"
   , "scala", "sql", "swift", "visualbasic", "xml", "yaml"
   ]

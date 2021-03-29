@@ -1,9 +1,8 @@
-{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {- |
    Module      : Tests.Lua
-   Copyright   : © 2017-2020 Albert Krewinkel
+   Copyright   : © 2017-2021 Albert Krewinkel
    License     : GNU GPL, version 2 or above
 
    Maintainer  : Albert Krewinkel <albert@zeitkraut.de>
@@ -14,7 +13,6 @@ Unit and integration tests for pandoc's Lua subsystem.
 -}
 module Tests.Lua ( runLuaTest, tests ) where
 
-import Prelude
 import Control.Monad (when)
 import System.FilePath ((</>))
 import Test.Tasty (TestTree, localOption)

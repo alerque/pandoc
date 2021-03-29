@@ -1,11 +1,13 @@
 # Contributors
 
 - Anabra
+- Aner Lucero
 - Arata Mizuki
 - Arfon Smith
 - Aaron Wolen
 - Albert Krewinkel
 - Alex Ivkin
+- Alex Toldaiev
 - Alex Vong
 - Alexander Kondratskiy
 - Alexander Krotov
@@ -33,6 +35,7 @@
 - Benoit Schweblin
 - Bjorn Buckwalter
 - Blake Eryx
+- Bodigrim
 - Bradley Kuhn
 - Brent Yorgey
 - Brian Leung
@@ -61,11 +64,13 @@
 - Daniele D'Orazio
 - David A Roberts
 - David Lazar
+- David Martschenko
 - David Röthlisberger
 - Denis Laxalde
 - Denis Maier
 - Derek Chen-Becker
 - Diego Balseiro
+- Dimitri Sabadie
 - Dmitry Pogodin
 - Dmitry Volodin
 - Douglas Calvert
@@ -74,6 +79,7 @@
 - Emerson Harkin
 - Emily Eisenberg
 - Eric Kow
+- Erik Rask
 - Eric Seidel
 - Eric Schrijver
 - Ethan Riley
@@ -83,6 +89,7 @@
 - Florian Beeres
 - Florian Eitel
 - Florian Klink
+- Florian Kohrt
 - Francesco Occhipinti
 - François Gannaz
 - Frederik Elwert
@@ -105,6 +112,7 @@
 - Hubert Plociniczak
 - Ian Max Andolina
 - Igor Khorlo
+- Igor Pashev
 - Ilya V. Portnov
 - Ivan Trubach
 - Ivo Clarysse
@@ -118,6 +126,7 @@
 - Jamie F. Olson
 - Jan Larres
 - Jan Schulz
+- Jan Tojnar
 - Jan-Otto Kröpke
 - Jason Ronallo
 - Jeff Arnold
@@ -125,6 +134,7 @@
 - Jens Getreu
 - Jens Petersen
 - Jeroen de Haas
+- Jerry Sky
 - Jesse Rosenthal
 - Joe Hermaszewski
 - Joe Hillenbrand
@@ -157,6 +167,8 @@
 - Leif Metcalf
 - Leonard Rosenthol
 - Lila
+- Loïc Grobol
+- Lorenzo
 - Lucas Escot
 - Luke Plant
 - Marc Schreiber
@@ -190,10 +202,12 @@
 - Nathan Gass
 - Neil Mayhew
 - Nick Bart
+- Nick Berendsen
 - Nick Fleisher
 - Nicolas Kaiser
 - Nikolay Yakimov
 - Nils Carlson
+- Nixon Enraght-Moony
 - Nokome Bentley
 - Ole Martin Ruud
 - Oliver Matthews
@@ -228,6 +242,7 @@
 - Shahbaz Youssefi
 - Shaun Attfield
 - Shim Myeongseob
+- Shin Sang-jae
 - Sidarth Kapur
 - Sidharth Kapur
 - Simon Hengel
@@ -271,6 +286,7 @@
 - bucklereed
 - bumper314
 - chinapedia
+- cholonam
 - csforste
 - dbecher-ito
 - d-dorazio
@@ -293,8 +309,12 @@
 - rski
 - shreevatsa.public
 - takahashim
+- taotieren
+- TEC
 - tgkokk
 - the-solipsist
+- timo-a
 - thsutton
 - vijayphoenix
 - wiefling
+- wuffi
