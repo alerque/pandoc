@@ -31,6 +31,7 @@ import Text.Pandoc.Logging
 import Text.Pandoc.Options
 import Text.DocLayout
 import Text.Pandoc.Shared
+import Text.Pandoc.URI
 import Text.Pandoc.Walk
 import Text.Pandoc.Writers.Shared
 import Text.Printf (printf)
@@ -144,7 +145,7 @@ toLabel z = go `fmap` stringToSILE URLString z
  where
    go = T.concatMap $ \x -> case x of
      _ | (isLetter x || isDigit x) && isAscii x -> T.singleton x
-       | x `elemText` "_-+=:;." -> T.singleton x
+       | T.any(== x) "_-+=:;." -> T.singleton x
        | otherwise -> T.pack $ "ux" <> printf "%x" (ord x)
 
 toOptions :: PandocMonad m => Text -> [Text] -> [(Text, Text)] -> LW m [Text]
@@ -189,7 +190,6 @@ inOptEnv cmd args content = do
 blockToSILE :: PandocMonad m
              => Block     -- ^ Block to convert
              -> LW m (Doc Text)
-blockToSILE Null = return empty
 blockToSILE (Div (ident,classes,kvs) bs) = do
   options <- toOptions ident classes kvs
   content <- blockListToSILE bs
