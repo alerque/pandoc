@@ -218,7 +218,9 @@ blockToSILE b@(RawBlock f x)
 blockToSILE (BulletList lst) = do
   items <- mapM listItemToSILE lst
   let content = vcat items
-  return $ inOptEnv "BulletList" [] content
+  let opts = [("tight", "true") | isTightList lst]
+  options <- toOptions "" [] opts
+  return $ inOptEnv "BulletList" options content
 blockToSILE (OrderedList _ []) = return empty -- otherwise error
 blockToSILE (OrderedList (start, numstyle, _) lst) = do
   st <- get
