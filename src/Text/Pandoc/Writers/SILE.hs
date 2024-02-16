@@ -19,6 +19,14 @@ module Text.Pandoc.Writers.SILE (
   ) where
 import Prelude
 import Control.Monad.State.Strict
+    ( MonadState(get, put),
+      gets,
+      modify,
+      evalStateT )
+import Control.Monad
+    ( MonadPlus(mplus),
+      liftM,
+      when )
 import Data.Char (isAscii, isDigit, isLetter, isPunctuation, ord)
 import Data.List (foldl', intersperse)
 import Data.Text (Text)
@@ -33,34 +41,15 @@ import Text.DocLayout
 import Text.Pandoc.Shared
 import Text.Pandoc.URI
 import Text.Pandoc.Walk
+import Text.Pandoc.Writers.SILE.Types (LW, WriterState (..), startingState)
 import Text.Pandoc.Writers.Shared
 import Text.Printf (printf)
-
-data WriterState =
-  WriterState {
-                stOLLevel       :: Int           -- level of ordered list nesting
-              , stOptions       :: WriterOptions -- writer options, so they don't have to be parameter
-              , stHasChapters   :: Bool          -- true if document has chapters
-              , stEmptyLine     :: Bool          -- true if no content on line
-              }
-
-startingState :: WriterOptions -> WriterState
-startingState options = WriterState {
-                  stOLLevel = 1
-                , stOptions = options
-                , stHasChapters = case writerTopLevelDivision options of
-                                TopLevelPart    -> True
-                                TopLevelChapter -> True
-                                _               -> False
-                , stEmptyLine = True }
 
 -- | Convert Pandoc to SILE.
 writeSILE :: PandocMonad m => WriterOptions -> Pandoc -> m Text
 writeSILE options document =
   evalStateT (pandocToSILE options document) $
     startingState options
-
-type LW m = StateT WriterState m
 
 pandocToSILE :: PandocMonad m
               => WriterOptions -> Pandoc -> LW m Text
