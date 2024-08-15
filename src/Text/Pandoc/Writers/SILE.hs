@@ -246,6 +246,8 @@ blockToSILE (Header level (id',classes,_) lst) = do
   return hdr
 blockToSILE Table{} =
   return "\\script{SU.warn(\"Unimplemented, tables!\")}"
+blockToSILE Figure{} =
+  return "\\img[src=]{title}"
 
 blockListToSILE :: PandocMonad m => [Block] -> LW m (Doc Text)
 blockListToSILE lst =
