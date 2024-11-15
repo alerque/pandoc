@@ -245,7 +245,7 @@ blockToSILE (Header level (id',classes,_) lst) = do
   hdr <- sectionHeader classes id' level lst
   return hdr
 blockToSILE Table{} =
-  return "\\script{SU.warn(\"Unimplemented, tables!\")}"
+  return "\\lua{SU.warn(\"Unimplemented, tables!\")}"
 
 blockListToSILE :: PandocMonad m => [Block] -> LW m (Doc Text)
 blockListToSILE lst =
