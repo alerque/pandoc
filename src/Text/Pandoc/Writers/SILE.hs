@@ -373,12 +373,13 @@ inlineToSILE (Link (ident,classes,kvs) txt (src,_))
   | Just ('#', ident') <- T.uncons src = do
       content <- inlineListToSILE txt
       options <- toOptions ident' classes kvs
-      return $ inOptCmd "pdf:link" options content
+      let options' = map (T.replace "id=" "dest=") options
+      return $ inOptCmd "pdf:link" options' content
   | otherwise = do
-                content <- inlineListToSILE txt
-                src' <- stringToSILE URLString (escapeURI src)
-                options <- toOptions ident classes (kvs ++ [("src", src')])
-                return $ inOptCmd "href" options content
+      content <- inlineListToSILE txt
+      src' <- stringToSILE URLString (escapeURI src)
+      options <- toOptions ident classes (kvs ++ [("src", src')])
+      return $ inOptCmd "href" options content
 inlineToSILE il@(Image _ _ (src, _))
   | Just _ <- T.stripPrefix "data:" src = do
   report $ InlineNotRendered il
