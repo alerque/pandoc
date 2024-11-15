@@ -140,7 +140,6 @@ toLabel z = go `fmap` stringToSILE URLString z
 toOptions :: PandocMonad m => Text -> [Text] -> [(Text, Text)] -> LW m [Text]
 toOptions ident classes kvs = do
   ref <- toLabel ident
-  -- lang <- toLang $ lookup "lang" kvs
   let classes' = [ val | (val) <- classes ]
   let classes'' = T.intercalate "," classes'
   let options = (if T.null ident
