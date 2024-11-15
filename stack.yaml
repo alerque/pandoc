@@ -16,6 +16,7 @@ extra-deps:
 - toml-parser-2.0.1.0
 - doclayout-0.5
 - doctemplates-0.11.0.1
+- hslua-list-1.1.4
 - hslua-module-doclayout-1.2.0
 - djot-0.1.2.2
 - commonmark-0.2.6.1
