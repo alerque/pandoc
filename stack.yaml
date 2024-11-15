@@ -19,6 +19,7 @@ extra-deps:
 - doclayout-0.5
 - doctemplates-0.11.0.1
 - typst-0.6
+- hslua-list-1.1.4
 - hslua-module-doclayout-1.2.0
 - pandoc-lua-marshal-0.2.9
 - djot-0.1.2.2
