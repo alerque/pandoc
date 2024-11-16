@@ -77,6 +77,7 @@ pandocToSILE options (Pandoc meta blocks) = do
   st <- get
   titleMeta <- stringToSILE TextString $ stringify $ docTitle meta
   authorsMeta <- mapM (stringToSILE TextString . stringify) $ docAuthors meta
+  dateMeta <- mapM (stringToSILE TextString . stringify) $ docDate meta
 
   let context  =  defField "toc" (writerTableOfContents options) $
                   defField "toc-depth" (tshow
@@ -85,8 +86,9 @@ pandocToSILE options (Pandoc meta blocks) = do
                                                  then 1
                                                  else 0)) $
                   defField "body" main $
-                  defField "title-meta" titleMeta $
-                  defField "author-meta"
+                  defField "title" titleMeta $
+                  defField "date" dateMeta $
+                  defField "author"
                         (T.intercalate "; " authorsMeta) $
                   defField "documentclass" documentClass $
                   defField "numbersections" (writerNumberSections options) $
