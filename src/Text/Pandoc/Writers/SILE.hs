@@ -258,8 +258,8 @@ defListItemToSILE :: PandocMonad m => ([Inline], [[Block]]) -> LW m (Doc Text)
 defListItemToSILE (term, defs) = do
     term' <- inlineListToSILE term
     def'  <- liftM vsep $ mapM blockListToSILE defs
-    return $ inCmd "term" term' $$
-             inCmd "definition" def'
+    return $ inCmd "ListItemTerm" term' $$
+             inCmd "ListItemDefinition" def'
 
 sectionHeader :: PandocMonad m
               => [Text]  -- classes
