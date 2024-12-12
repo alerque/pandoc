@@ -1,5 +1,5 @@
 \begin[$if(papersize)$papersize=$papersize$,$endif$class=$documentclass$$if(classoptions)$,$classoptions$$endif$]{document}
-\script[src=packages/pandoc]
+\use[module=packages.pandoc]
 $if(lang)$
 \language[main=$lang$]
 \font[language=$lang$]
@@ -13,7 +13,7 @@ $endif$
 $if(fontsize)$
 \font[size=$fontsize$]
 $endif$
-\begin{script}
+\begin{lua}
 $if(links-as-notes)$
 SILE.registerCommand("href", function(options, content)
   SILE.call("url", options, content)
@@ -24,7 +24,7 @@ SILE.registerCommand("href", function(options, content)
   SILE.call("url", options, content)
 end)
 $endif$
-\end{script}
+\end{lua}
 $for(include)$
 \script[src=$include$]
 $endfor$
